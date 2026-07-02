@@ -12,12 +12,17 @@
 
 ## Model Candidates (16GB VRAM)
 
-| Priority | Model | Quant | ~VRAM | Notes |
+**Baseline (Batwing box `192.168.0.131`):** `qwen36-27b-nvfp4` — NVIDIA FP4 quant on Blackwell GPU. That's the current primary coder in opencode config. **Not relevant for local testing** — NVFP4 is optimized for Blackwell (5090), not your Ada Lovelace 4070 Ti Super.
+
+**Local targets (Batwing box `192.168.0.112`, LM Studio, Ada Lovelace 16GB):**
+
+| Priority | Model | Quant Format | ~VRAM | Notes |
 |---|---|---|---|---|
-| **Primary** | Qwen3.6-35B-A3B (MoE) | Q3/Q4 | 16–17 GB | Best capability/fit balance. MoE = ~3B active params per token |
-| Alt 1 | Gemma 3 27B | Q4 | ~16 GB | Tight fit, minimal headroom |
-| Alt 2 | Mistral Small 24B | Q4 | 13–14 GB | More headroom for context, slightly less capability |
-| Avoid | 27B dense | high quant | ❌ | Doesn't fit well at high quants |
+| **Primary** | Qwen3.6-35B-A3B (MoE) | GGUF Q3/Q4 | 16–17 GB | Best capability/fit. MoE = ~3B active params per token. Source: `Qwen/Qwen3.6-35B-A3B` |
+| Alt 1 | Qwen3.6-27B | GGUF Q3/Q4 | ~14–16 GB | Dense 27B, lower quants only. Smaller context window than MoE |
+| Avoid | NVIDIA NVFP4 variants | NVFP4 | ❌ | Blackwell-only. Not optimal for Ada Lovelace |
+
+GGUF quants from Unsloth/community on HuggingFace are the way to go — not NVFP4.
 
 ## Test Prompts
 
