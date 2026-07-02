@@ -8,3 +8,7 @@ Desktop.ini
 
 # Results (keep structured ones, ignore auto-generated logs)
 results/*.log
+
+# Model binaries — too large for git, download via hf CLI
+models/*.gguf
+models/.cache/
