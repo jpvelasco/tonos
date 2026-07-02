@@ -1,0 +1,10 @@
+# Log files
+*.log
+coder-tuning-*.log
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Results (keep structured ones, ignore auto-generated logs)
+results/*.log

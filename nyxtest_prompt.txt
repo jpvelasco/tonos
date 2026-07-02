@@ -1,0 +1,8 @@
+You are reviewing the nyx repository (cloned locally).
+Perform a structured code review and architecture assessment:
+1. Overall project structure and purpose
+2. Key strengths
+3. Areas for improvement (architecture, code quality, DX, performance)
+4. Specific actionable recommendations (with file paths if possible)
+5. Any obvious bugs or risks
+Be concise, decisive, and avoid repetitive planning. Give me your best analysis in one coherent response.
