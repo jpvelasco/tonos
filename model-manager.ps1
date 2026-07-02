@@ -46,20 +46,21 @@ switch ($Action) {
     }
 
     'info' {
-        Write-Host "`n📦 Local GGUF models in models/:" -ForegroundColor Cyan
-        $ModelsDir = Join-Path (Split-Path $MyInvocation.MyCommand.Path) "models"
+        Write-Host "`n📦 Local GGUF models (X:\.lmstudio\models):" -ForegroundColor Cyan
+        $ModelsDir = "X:\.lmstudio\models"
         if (Test-Path $ModelsDir) {
-            $Files = Get-ChildItem -Path $ModelsDir -Filter "*.gguf" -ErrorAction SilentlyContinue
+            $Files = Get-ChildItem -Path $ModelsDir -Recurse -Filter "*.gguf" -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 1GB }
             if ($Files) {
                 foreach ($f in $Files) {
                     $SizeGB = [math]::Round($f.Length / 1GB, 2)
-                    Write-Host "  • $($f.Name)  (${SizeGB} GB)" -ForegroundColor White
+                    $Repo = "$($f.Directory.Parent.Name)/$($f.Directory.Name)"
+                    Write-Host "  • $Repo/$($f.Name)  (${SizeGB} GB)" -ForegroundColor White
                 }
             } else {
-                Write-Host "  (no GGUF files found — downloads may still be in progress)" -ForegroundColor DarkGray
+                Write-Host "  (no GGUF files found)" -ForegroundColor DarkGray
             }
         } else {
-            Write-Host "  models/ directory not found" -ForegroundColor DarkGray
+            Write-Host "  models/ directory not found at $ModelsDir" -ForegroundColor DarkGray
         }
     }
 

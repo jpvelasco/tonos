@@ -69,25 +69,17 @@ Write-Host "   API:    $ApiUrl" -ForegroundColor DarkGray
 Write-Host "   Timeout: ${TimeoutSec}s`n" -ForegroundColor DarkGray
 
 $Start = Get-Date
-$FirstTokenTime = $null
-
-$body = @{
-    model   = $ModelId
-    prompt  = $Prompt
-    temperature = 0.6
-    max_tokens  = 4096
-    stream    = $true
-} | ConvertTo-Json
-
-$tokens = @()
-$charCount = 0
-$wordCount = 0
-$toolCallKeywords = 0
 
 try {
+    $body = @{
+        model       = $ModelId
+        temperature = 0.6
+        max_tokens  = 4096
+        messages    = @( @{ role = 'user'; content = $Prompt } )
+    } | ConvertTo-Json -Depth 10
+
     $response = Invoke-WebRequest -Uri "$ApiUrl/chat/completions" -Method Post `
-        -Body ($body | ConvertFrom-Json | Add-Member -NotePropertyName 'messages' -NotePropertyValue @(@{role='user'; content=$Prompt}) -PassThru | ConvertTo-Json) `
-        -ContentType "application/json" -TimeoutSec $TimeoutSec -UseBasicParsing
+        -Body $body -ContentType "application/json" -TimeoutSec $TimeoutSec -UseBasicParsing
 
     # Non-streaming fallback
     $result = $response.Content | ConvertFrom-Json
