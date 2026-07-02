@@ -8,7 +8,8 @@
 - **RAM:** 64GB
 - **CPU:** AMD Ryzen 7 2700X
 - **OS:** Windows 11 Pro
-- **Inference:** LM Studio (local Ollama-compatible API)
+- **Inference:** LM Studio (local OpenAI-compatible API at `localhost:1234`)
+- **Model storage:** `F:\.lmstudio\models`
 
 ## Model Candidates (16GB VRAM)
 
