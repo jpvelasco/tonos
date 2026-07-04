@@ -1,0 +1,26 @@
+This Go code has a subtle bug. Find it, explain why it's wrong, and provide the fix.
+
+```go
+func MergeMaps(base, overrides map[string]string) map[string]string {
+    for k, v := range overrides {
+        base[k] = v
+    }
+    return base
+}
+
+func main() {
+    base := map[string]string{"host": "localhost", "port": "8080"}
+    overrides := map[string]string{"port": "9090", "debug": "true"}
+
+    result := MergeMaps(base, overrides)
+    fmt.Printf("base: %v\n", base)
+    fmt.Printf("result: %v\n", result)
+    fmt.Printf("same? %v\n", base == result)
+}
+```
+
+Explain:
+1. What the bug is
+2. Why it happens (Go semantics)
+3. The correct implementation
+4. What the output actually prints vs what a naive reader would expect
