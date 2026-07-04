@@ -8,39 +8,74 @@
 - **RAM:** 64GB
 - **CPU:** AMD Ryzen 7 2700X
 - **OS:** Windows 11 Pro
-- **Inference:** LM Studio (local OpenAI-compatible API at `localhost:1234`)
+- **Inference:** LM Studio (OpenAI-compatible API at `http://192.168.0.112:1234`)
 - **Model storage:** `F:\.lmstudio\models`
 
-## Model Candidates (16GB VRAM)
+## Evaluated Models (16 GB VRAM)
 
-**Baseline (Batwing box `192.168.0.131`):** `qwen36-27b-nvfp4` — NVIDIA FP4 quant on Blackwell GPU. That's the current primary coder in opencode config. **Not relevant for local testing** — NVFP4 is optimized for Blackwell (5090), not your Ada Lovelace 4070 Ti Super.
+**External baseline (Batwing box `192.168.0.131`):** `qwen36-27b-nvfp4` remains the primary coder outside this machine. Its NVIDIA FP4 quant is optimized for Blackwell and is not a local Ada Lovelace candidate.
 
-**Local targets (Batwing box `192.168.0.112`, LM Studio, Ada Lovelace 16GB):**
+**Batmobile (`192.168.0.112`, RTX 4070 Ti Super):**
 
-| Priority | Model | Quant Format | ~VRAM | Notes |
-|---|---|---|---|---|
-| **Primary** | Qwen3.6-35B-A3B (MoE) | GGUF Q3/Q4 | 16–17 GB | Best capability/fit. MoE = ~3B active params per token. Source: `Qwen/Qwen3.6-35B-A3B` |
-| Alt 1 | Qwen3.6-27B | GGUF Q3/Q4 | ~14–16 GB | Dense 27B, lower quants only. Smaller context window than MoE |
-| Avoid | NVIDIA NVFP4 variants | NVFP4 | ❌ | Blackwell-only. Not optimal for Ada Lovelace |
+| Status | Model | Quant | Controlled result |
+|---|---|---|---|
+| **Provisional winner** | Gemma 4 12B QAT | Q4_0 | 63.53 native tok/s, 4.23 s cold TTFT, 0.23 s reuse TTFT, quality PASS, 4,289 MiB free VRAM |
+| Rejected | Qwen3 Coder 30B A3B | IQ3_XXS | 35.33 native tok/s; quality fixture executable but tests failed; 1,518 MiB free VRAM |
+| Rejected | Qwen3.6 35B A3B MTP | IQ3_XXS | 13.32 native tok/s; 99.2% reasoning; no visible coding answer |
+| Rejected | Qwen3.6 35B A3B | Q3_K_S | 10.09 native tok/s; controlled OpenCode cold TTFT 18.68 s |
 
-GGUF quants from Unsloth/community on HuggingFace are the way to go — not NVFP4.
+Gemma is the benchmark winner, not yet the production default. It still needs a real OpenCode repository task with tool calls and edits, followed by a Grok CLI validation.
 
 ## Test Prompts
 
-- `nyxtest_prompt.txt` — Code review / architecture assessment of the nyx repo (Go CLI, homelab network validation)
-- More prompts added as testing progresses
+- `nyxtest_prompt.txt` — Code review / architecture assessment of the nyx repo
+- `coding_prompt.txt` — Go retry decorator implementation (coding ability test)
+- `debugging_prompt.txt` — Go map mutation bug (debugging ability test)
 
-## Tuning Scripts
+## Scripts
 
-- `batcave-coder-tuner.ps1` — PS7 tuner, tests Grok coder parameter combos (temp/presence/freq)
-- `batcave-coder-tuner-v5.ps1` — PS 5.1 compatible version (older, uses `Repeat` instead of `Freq`)
+### Benchmark
+
+- `benchmark.ps1` — Authoritative schema-v3 benchmark harness. It can load a model, collect cold/reuse TTFT and native throughput, run Quick/OpenCode/Full suites, and optionally run the executable Go quality fixture.
+  - Example: `.\benchmark.ps1 -Model 'google/gemma-4-12b-qat' -Label 'gemma4-baseline' -Suite OpenCode -ContextLength 65536 -Parallel 1 -EvalBatchSize 8192 -PhysicalBatchSize 2048 -KvCacheGpu -Runs 3 -RunQuality`
+  - Use `-PromptFile` to replace the coding-quality prompt and `-SkipLoad` only when the intended model/configuration is already loaded.
+  - Outputs timestamped JSON and captured text under `benchmark-results/`.
+- `bench.ps1` — Compatibility wrapper that forwards the supported arguments to `benchmark.ps1`.
+- `run-all-benchmarks.ps1` — Runs the maintained Gemma/Qwen benchmark matrix. Example: `.\run-all-benchmarks.ps1 -Selection Gemma`.
+
+### Compare
+
+- `compare-results.ps1` — Compares schema-v3 results in `benchmark-results/`.
+  - Usage: `.\compare-results.ps1`, `.\compare-results.ps1 -Format csv`, or `.\compare-results.ps1 -Label 'gemma4-*'`.
+  - Supported formats: `table`, `json`, and `csv`.
+
+### Model Manager
+
+- `model-manager.ps1` — Lists installed/loaded LM Studio models and performs supported load/unload/status actions.
+  - Usage: `.\model-manager.ps1 -Action status`.
+
+### Legacy Tuners
+- `batcave-coder-tuner.ps1` — PS7 tuner, tests Grok coder parameter combos
+- `batcave-coder-tuner-v5.ps1` — PS 5.1 compatible version (older)
+
+## Benchmark Workflow
+
+1. Choose one explicit model/configuration and record context, parallelism, batch sizes, KV-cache placement, and reasoning mode.
+2. Run `benchmark.ps1`; let it load the model unless the exact configuration is already resident.
+3. Change one configuration variable at a time and keep the suite, prompt, run count, and output limit fixed.
+4. Use `-RunQuality` before advancing a fast configuration. Throughput alone is not an acceptance result.
+5. Compare schema-v3 records with `compare-results.ps1`.
+6. Validate the winner in OpenCode on a real repository task with tools, then in Grok CLI, before changing either client default.
 
 ## Results
 
-Tuning results logged to `results/` as timestamped files.
+`benchmark-results/` is the authoritative result directory. Schema-v3 JSON records contain requested/effective configuration, TTFT, throughput, reasoning share, VRAM observations, and quality status. Captured model output and quality-fixture artifacts are stored beside the records.
+
+`results/` contains older harness output and should not be mixed into current comparisons.
 
 ## Conventions
 
-- Results stored in `results/` with date-stamped filenames
+- Current results use schema v3 and are stored in `benchmark-results/` with date-stamped filenames
 - Test scripts in root, prompts in root
+- Keep at least 1,536 MiB free VRAM after a representative run; treat a quality failure or missing visible answer as disqualifying
 - Keep it lean — this is a dojo, not a product
