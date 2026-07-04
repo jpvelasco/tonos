@@ -12,3 +12,9 @@ results/*.log
 # Model binaries — too large for git, download via hf CLI
 models/*.gguf
 models/.cache/
+# Generated benchmark and client artifacts
+benchmark-results/
+results/
+.grok-config.toml.pending
+*.pid
+*.sse

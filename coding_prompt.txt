@@ -1,0 +1,14 @@
+Implement this exact Go API:
+
+    func Retry(ctx context.Context, attempts int, initialDelay time.Duration, fn func() error) error
+
+Requirements:
+- Call fn at most attempts times and stop immediately on success.
+- Return an error for attempts < 1 or a nil fn.
+- Between failed attempts, use exponential backoff from initialDelay.
+- Add random jitter from 0% through 25%.
+- Context cancellation must interrupt the wait and return ctx.Err().
+- Return the final fn error when all attempts fail.
+- Be safe for concurrent callers and keep the implementation under 60 lines.
+
+Return one fenced Go code block only. Use package name retry.

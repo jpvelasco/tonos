@@ -8,7 +8,7 @@ LM Studio endpoint: `http://192.168.0.112:1234/v1`
 
 The OpenCode and Grok CLI configurations are valid and resolve successfully. The previous `n_keep >= n_ctx` context-length failure is no longer occurring.
 
-Controlled schema-v3 benchmarking is complete enough to identify **Gemma 4 12B QAT Q4_0 as the provisional Batmobile winner**. It is not yet the client default because a real OpenCode repository task with tool use and edits remains outstanding.
+Controlled schema-v3 benchmarking and client qualification identify **Gemma 4 12B QAT Q4_0 as the qualified Batmobile winner**. It passed real OpenCode and Grok CLI repository tasks with tool use, targeted edits, and verification. Promoting it to a client default remains a separate configuration decision.
 
 ### OpenCode
 
@@ -134,14 +134,12 @@ Backups made before editing:
 
 ## Next steps
 
-The synthetic tuning loop is complete. Remaining work is client validation and cleanup:
+The tuning and client-qualification loops are complete. Ongoing work is operational:
 
 1. Load Gemma with the winning 65K/parallel-1/8192/2048/GPU-KV configuration.
-2. Run a normal OpenCode task against a disposable or clean repository. Require successful file inspection, tool calls, a targeted edit, and verification—not a trivial `OK` response.
-3. Run a comparable Grok CLI task using `batmobile-gemma4`.
-4. Check both client logs for context, template, malformed tool-call, truncation, or silent fallback errors.
-5. If both clients pass, change the Batmobile OpenCode default from Qwen3.6 to Gemma. Keep Batwing unchanged.
-6. Archive or remove stale pre-schema-v3 result artifacts and resolve `.grok-config.toml.pending` before committing a coherent checkpoint.
+2. Promote `batmobile-gemma4` in client configuration when desired; keep Batwing unchanged.
+3. Re-run schema-v3 quality and real client tasks after model, template, LM Studio, or client changes.
+4. Keep generated result artifacts local and commit only summarized decision records.
 
 ## Decision criteria
 
@@ -153,4 +151,4 @@ A usable Batmobile default should:
 - Produce valid tool calls and reliable code.
 - Avoid template errors and context-retention failures.
 
-Controlled tuning is complete enough to reject both Qwen3.6 configurations and Qwen3 Coder for this GPU. Gemma is the provisional Batmobile default candidate, pending real OpenCode and Grok tool-use validation. Batwing remains Grok CLI's default.
+Controlled tuning rejects both Qwen3.6 configurations and Qwen3 Coder for this GPU. Gemma is the qualified Batmobile winner after passing OpenCode and Grok tool-use validation. Batwing remains Grok CLI's default.
