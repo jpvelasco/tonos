@@ -1,93 +1,52 @@
 <#
 .SYNOPSIS
-    Manage LM Studio models — list, load, unload via localhost API.
-.DESCRIPTION
-    Helper for the Batmobile dojo. Works with LM Studio's local server.
-    Note: LM Studio's local API doesn't expose load/unload endpoints directly.
-    This script works with LM Studio's model management via the UI or file-based approach.
-.PARAMETER Action
-    list - Show models currently loaded in LM Studio
-    info - Show model details from models/ directory
-    unload - Signal to unload current model (opens LM Studio UI hint)
-.PARAMETER ApiUrl
-    LM Studio API base URL. Defaults to http://localhost:1234/v1.
-.EXAMPLE
-    .\model-manager.ps1 -Action list
-    .\model-manager.ps1 -Action info
-    .\model-manager.ps1 -Action unload
+    Inspect or unload models on the Batmobile LM Studio server.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('list', 'info', 'unload', 'status')]
-    [string]$Action,
-
-    [string]$ApiUrl = "http://localhost:1234/v1"
+    [ValidateSet('catalog', 'loaded', 'status', 'unload')]
+    [string] $Action,
+    [string] $ApiRoot = 'http://192.168.0.112:1234'
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+$ApiRoot = $ApiRoot.TrimEnd('/')
+
+function Get-Catalog {
+    Invoke-RestMethod -Method Get -Uri "${ApiRoot}/api/v1/models" -TimeoutSec 30
+}
 
 switch ($Action) {
-    'list' {
-        Write-Host "`n📋 Models loaded in LM Studio:" -ForegroundColor Cyan
-        try {
-            $Models = Invoke-RestMethod -Uri "$ApiUrl/models" -Method Get -TimeoutSec 10 -UseBasicParsing
-            if ($Models.data.Count -eq 0) {
-                Write-Host "  (no models loaded)" -ForegroundColor DarkGray
-            } else {
-                foreach ($m in $Models.data) {
-                    Write-Host "  • $($m.id)" -ForegroundColor White
-                }
-            }
-        } catch {
-            Write-Error "Could not connect to LM Studio at $ApiUrl`n$_"
-        }
+    'catalog' {
+        (Get-Catalog).models | Select-Object key, type, display_name, params_string,
+            max_context_length, @{Name='quant';Expression={$_.quantization.name}},
+            @{Name='loaded';Expression={@($_.loaded_instances).Count -gt 0}} |
+            Format-Table -AutoSize
     }
-
-    'info' {
-        Write-Host "`n📦 Local GGUF models (F:\.lmstudio\models):" -ForegroundColor Cyan
-        $ModelsDir = "F:\.lmstudio\models"
-        if (Test-Path $ModelsDir) {
-            $Files = Get-ChildItem -Path $ModelsDir -Recurse -Filter "*.gguf" -ErrorAction SilentlyContinue | Where-Object { $_.Length -gt 1GB }
-            if ($Files) {
-                foreach ($f in $Files) {
-                    $SizeGB = [math]::Round($f.Length / 1GB, 2)
-                    $Repo = "$($f.Directory.Parent.Name)/$($f.Directory.Name)"
-                    Write-Host "  • $Repo/$($f.Name)  (${SizeGB} GB)" -ForegroundColor White
-                }
-            } else {
-                Write-Host "  (no GGUF files found)" -ForegroundColor DarkGray
-            }
-        } else {
-            Write-Host "  models/ directory not found at $ModelsDir" -ForegroundColor DarkGray
-        }
+    'loaded' {
+        $instances = @((Get-Catalog).models | ForEach-Object { $_.loaded_instances })
+        if ($instances.Count -eq 0) { Write-Host 'No model is loaded.'; break }
+        $instances | Select-Object id, status,
+            @{Name='context_length';Expression={$_.config.context_length}},
+            @{Name='parallel';Expression={$_.config.parallel}},
+            config | Format-List
+        & lms ps
     }
-
     'status' {
-        Write-Host "`n🔍 LM Studio API status:" -ForegroundColor Cyan
-        try {
-            $r = Invoke-WebRequest -Uri "$ApiUrl/models" -Method Get -TimeoutSec 5 -UseBasicParsing
-            Write-Host "  ✓ API responding ($($r.StatusCode))" -ForegroundColor Green
-            $Models = $r.Content | ConvertFrom-Json
-            Write-Host "  Models loaded: $($Models.data.Count)" -ForegroundColor White
-            foreach ($m in $Models.data) {
-                Write-Host "    • $($m.id)" -ForegroundColor White
-            }
-        } catch {
-            Write-Host "  ✗ API not responding — is LM Studio running?" -ForegroundColor Red
-            Write-Host "    $_" -ForegroundColor DarkGray
-        }
+        $openAi = Invoke-RestMethod -Method Get -Uri "${ApiRoot}/v1/models" -TimeoutSec 10
+        Write-Host "LM Studio is responding at ${ApiRoot}." -ForegroundColor Green
+        $openAi.data | Select-Object id, object, owned_by | Format-Table -AutoSize
     }
-
     'unload' {
-        Write-Host "`n⚠️  LM Studio doesn't expose a programmatic unload endpoint." -ForegroundColor Yellow
-        Write-Host "   To unload a model:" -ForegroundColor White
-        Write-Host "   1. Open LM Studio UI" -ForegroundColor DarkGray
-        Write-Host "   2. Go to the 'My Models' / 'Load' section" -ForegroundColor DarkGray
-        Write-Host "   3. Click 'Unload' on the current model" -ForegroundColor DarkGray
-        Write-Host "   4. Load the next model you want to test" -ForegroundColor DarkGray
-        Write-Host "" -ForegroundColor DarkGray
-        Write-Host "   Alternatively, restart the LM Studio Local Server." -ForegroundColor DarkGray
+        $instances = @((Get-Catalog).models | Where-Object type -eq 'llm' | ForEach-Object { $_.loaded_instances })
+        foreach ($instance in $instances) {
+            $body = @{ instance_id = $instance.id } | ConvertTo-Json -Compress
+            Invoke-RestMethod -Method Post -Uri "${ApiRoot}/api/v1/models/unload" `
+                -ContentType 'application/json' -Body $body -TimeoutSec 120 | Out-Null
+            Write-Host "Unloaded $($instance.id)." -ForegroundColor Green
+        }
+        if ($instances.Count -eq 0) { Write-Host 'No LLM was loaded.' }
     }
 }

@@ -1,0 +1,12 @@
+Write a Go function that implements a simple retry decorator with exponential backoff and jitter.
+
+Requirements:
+- Accept a function, max retries, base delay, and max delay as parameters
+- Add random jitter (±25%) to each delay to avoid thundering herd
+- Log each retry attempt with the error and next delay
+- Return the final error if all retries are exhausted
+- Include proper context propagation so retries can be cancelled
+
+Provide the complete implementation with a usage example. Keep it under 60 lines.
+
+/no_think
