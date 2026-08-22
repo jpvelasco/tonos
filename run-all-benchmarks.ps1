@@ -69,6 +69,7 @@ if ($selected.Count -eq 0) {
     throw "No model selected for '${Selection}'."
 }
 
+$outcomes = @()
 foreach ($model in $selected) {
     Write-Host ''
     Write-Host ('=' * 72) -ForegroundColor Cyan
@@ -99,9 +100,19 @@ foreach ($model in $selected) {
         $arguments.QualityMaxTokens = 2000
     }
 
-    & $benchmark @arguments
-
+    try {
+        & $benchmark @arguments
+        $outcomes += [pscustomobject]@{ Label = ${model}.Label; Result = 'OK' }
+    } catch {
+        Write-Warning "Benchmark for $(${model}.Label) failed: $($_.Exception.Message)"
+        $outcomes += [pscustomobject]@{ Label = ${model}.Label; Result = "FAILED: $($_.Exception.Message)" }
+    }
 }
 
 Write-Host ''
+$outcomes | Format-Table -AutoSize
+$failed = @($outcomes | Where-Object { $_.Result -ne 'OK' })
+if ($failed.Count -gt 0) {
+    throw "One or more benchmark configurations failed; review the outcomes above."
+}
 Write-Host 'Benchmark run complete. Use .\compare-results.ps1 for the authoritative table.' -ForegroundColor Green
