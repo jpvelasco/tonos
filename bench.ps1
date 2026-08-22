@@ -22,6 +22,7 @@ param(
     [int] $Runs,
     [int] $MaxTokens,
     [int] $TimeoutSec,
+    [int] $LoadTimeoutSec,
     [int] $OpenCodePromptTokens,
     [double] $Temperature,
     [string] $ReasoningEffort,

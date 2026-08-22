@@ -21,6 +21,7 @@ param(
     [ValidateRange(1, 20)][int] $Runs = 3,
     [ValidateRange(8, 16384)][int] $MaxTokens = 512,
     [ValidateRange(30, 300)][int] $TimeoutSec = 300,
+    [ValidateRange(60, 3600)][int] $LoadTimeoutSec = 600,
     [ValidateRange(1000, 50000)][int] $OpenCodePromptTokens = 12700,
     [ValidateRange(0.0, 2.0)][double] $Temperature = 0.2,
     [ValidateSet('auto','none','low','medium','high')][string] $ReasoningEffort = 'none',
@@ -86,6 +87,18 @@ function Get-LoadedInstance {
     $instances[0]
 }
 
+function Wait-LoadedInstance {
+    param([string] $Key, [int] $TimeoutSeconds)
+    if ($TimeoutSeconds -le 0) { return Get-LoadedInstance -Key $Key }
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ($true) {
+        $instance = Get-LoadedInstance -Key $Key
+        if ($null -ne $instance) { return $instance }
+        if ([DateTime]::UtcNow -ge $deadline) { return $null }
+        Start-Sleep -Seconds 2
+    }
+}
+
 function Unload-AllLlmModels {
     $catalog = Get-LmModels
     foreach ($record in @($catalog.models | Where-Object type -eq 'llm')) {
@@ -104,7 +117,7 @@ function Load-BenchmarkModel {
         if ($Mtp) { throw 'MTP and quantized KV loading cannot be combined by this LM Studio SDK version.' }
         $loader = Join-Path $PSScriptRoot 'load-model.mjs'
         Write-Host "Loading ${Model} through LM Studio SDK: context=${ContextLength}, parallel=${Parallel}, batch=${EvalBatchSize}, KV-GPU=${KvCacheQuantization}, MTP=false"
-        $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --physical-batch $PhysicalBatchSize --experts $NumExperts --kv $KvCacheQuantization
+        $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --physical-batch $PhysicalBatchSize --experts $NumExperts --kv $KvCacheQuantization --load-timeout-ms ([int]($LoadTimeoutSec * 1000))
         if ($LASTEXITCODE -ne 0) { throw "LM Studio SDK loader failed with exit code ${LASTEXITCODE}." }
         return ($loaderOutput | Select-Object -Last 1 | ConvertFrom-Json)
     }
@@ -118,7 +131,12 @@ function Load-BenchmarkModel {
     }
     if ($Record.architecture -match 'moe' -and $NumExperts -gt 0) { $body['num_experts'] = $NumExperts }
     Write-Host "Loading ${Model}: context=${ContextLength}, parallel=${Parallel}, batch=${EvalBatchSize}/${PhysicalBatchSize}, KV-GPU=$([bool]$KvCacheGpu), MTP=$([bool]$Mtp)"
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiRoot)/api/v1/models/load" -ContentType 'application/json' -Body ($body | ConvertTo-Json -Depth 8 -Compress) -TimeoutSec 300
+    try {
+        Invoke-RestMethod -Method Post -Uri "$($script:ApiRoot)/api/v1/models/load" -ContentType 'application/json' -Body ($body | ConvertTo-Json -Depth 8 -Compress) -TimeoutSec $LoadTimeoutSec
+    } catch [System.OperationCanceledException] {
+        Write-Warning "Load request hit the ${LoadTimeoutSec}s client timeout; continuing readiness polling."
+        $null
+    }
 }
 
 function Assert-EffectiveConfig {
@@ -390,9 +408,15 @@ $caught=$null
 $loadResponse=$null; $loaded=$null; $lmsPs=$null
 $gpuLoaded=$null; $gpuAfter=$null; $quality=$null
 try {
-    if(-not$SkipLoad){$loadResponse=Load-BenchmarkModel -Record $catalogRecord}
-    $loaded=Get-LoadedInstance -Key $Model
-    if($null-eq$loaded){throw "Model '${Model}' is not loaded after load step."}
+    if(-not$SkipLoad){
+        $loadResponse=Load-BenchmarkModel -Record $catalogRecord
+        Write-Host "Polling for loaded instance (deadline ${LoadTimeoutSec}s)..."
+        $loaded=Wait-LoadedInstance -Key $Model -TimeoutSeconds $LoadTimeoutSec
+        if($null-eq$loaded){throw "Model '${Model}' did not reach loaded state within ${LoadTimeoutSec}s."}
+    } else {
+        $loaded=Wait-LoadedInstance -Key $Model -TimeoutSeconds 0
+        if($null-eq$loaded){throw "Model '${Model}' is not loaded after load step."}
+    }
     Assert-EffectiveConfig -Config $loaded.config
     $lmsPs=(& lms ps --json 2>&1|Out-String).Trim()
     if($KvCacheGpu-and-not[bool]$loaded.config.offload_kv_cache_to_gpu){throw 'GPU KV cache requested but inactive; refusing CPU-spill benchmark.'}
