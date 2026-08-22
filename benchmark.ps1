@@ -40,6 +40,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$script:ExplicitPhysicalBatch = $PSBoundParameters.ContainsKey('PhysicalBatchSize')
 $script:ApiRoot = $ApiRoot.TrimEnd('/')
 $script:OpenAiRoot = "$($script:ApiRoot)/v1"
 $script:Results = [System.Collections.Generic.List[object]]::new()
@@ -126,9 +127,10 @@ function Load-BenchmarkModel {
     Unload-AllLlmModels
     if ($KvCacheGpu -and $KvCacheQuantization -ne 'f16') {
         if ($Mtp) { throw 'MTP and quantized KV loading cannot be combined by this LM Studio SDK version.' }
+        if ($script:ExplicitPhysicalBatch) { throw "The SDK loader cannot apply PhysicalBatchSize (unsupported by SDK 1.x); omit -PhysicalBatchSize or drop KV quantization." }
         $loader = Join-Path $PSScriptRoot 'load-model.mjs'
-        Write-Host "Loading ${Model} through LM Studio SDK: context=${ContextLength}, parallel=${Parallel}, batch=${EvalBatchSize}, KV-GPU=${KvCacheQuantization}, MTP=false"
-        $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --physical-batch $PhysicalBatchSize --experts $NumExperts --kv $KvCacheQuantization --load-timeout-ms ([int]($LoadTimeoutSec * 1000))
+        Write-Host "Loading ${Model} through LM Studio SDK: context=${ContextLength}, parallel=${Parallel}, batch=${EvalBatchSize}, KV-GPU=${KvCacheQuantization}, MTP=false (physical batch not controllable; server default applies)"
+        $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --experts $NumExperts --kv $KvCacheQuantization --load-timeout-ms ([int]($LoadTimeoutSec * 1000))
         if ($LASTEXITCODE -ne 0) { throw "LM Studio SDK loader failed with exit code ${LASTEXITCODE}." }
         return ($loaderOutput | Select-Object -Last 1 | ConvertFrom-Json)
     }
@@ -170,9 +172,14 @@ function Assert-EffectiveConfig {
             if ($null -ne $value) { "${_}=${value}" }
         })
         $confirmed = $observed | Where-Object { ($_ -split '=', 2)[1] -ieq $KvCacheQuantization }
-        if (-not $confirmed) {
-            $reported = if ($observed.Count -gt 0) { "server reported: $($observed -join ', ')" } else { 'server reported no KV quantization fields' }
-            throw "KV cache quantization '${KvCacheQuantization}' was requested but not confirmed in the effective config; ${reported}."
+        if ($observed.Count -gt 0 -and -not $confirmed) {
+            throw "KV cache quantization '${KvCacheQuantization}' was requested but effective config reports: $($observed -join ', ')."
+        }
+        if ($confirmed) {
+            $script:KvQuantizationVerified = $true
+        } else {
+            $script:KvQuantizationVerified = $false
+            Write-Warning "KV cache quantization '${KvCacheQuantization}' could not be verified: the server reports no quantization fields in its effective config. Recorded as unverified."
         }
     }
 }
@@ -421,6 +428,7 @@ New-Item -ItemType Directory -Path $OutDir -Force|Out-Null
 $catalogRecord=Get-ModelRecord -Key $Model
 $gpuBefore=Get-GpuSnapshot
 $script:RunError=$null
+$script:KvQuantizationVerified=$null
 $caught=$null
 $loadResponse=$null; $loaded=$null; $lmsPs=$null
 $gpuLoaded=$null; $gpuAfter=$null; $quality=$null
@@ -473,7 +481,7 @@ try {
     $script:RunError=$_.Exception.Message
     Write-Warning "Benchmark aborted before completion: $($script:RunError) (partial results will still be saved)"
 }
-$phaseNames=@($script:Results.phase|Where-Object{$_-ne'warmup'}|Sort-Object -Unique)
+$phaseNames=@($script:Results | ForEach-Object phase | Where-Object{$_-ne'warmup'}|Sort-Object -Unique)
 $summaries=[ordered]@{}
 foreach($phase in $phaseNames){$summaries[$phase]=Get-PhaseSummary -Phase $phase}
 $headroomPass=if($gpuAfter){$gpuAfter.memory_free_mib-ge1536}else{$false}
@@ -483,7 +491,7 @@ $document=[ordered]@{
     benchmark=[ordered]@{suite=$Suite;runs=$Runs;max_tokens=$MaxTokens;timeout_sec=$TimeoutSec;open_code_prompt_target=$OpenCodePromptTokens;temperature=$Temperature;reasoning_effort=$ReasoningEffort}
     requested_config=[ordered]@{context_length=$ContextLength;parallel=$Parallel;eval_batch_size=$EvalBatchSize;physical_batch_size=$PhysicalBatchSize;flash_attention=$true;offload_kv_cache_to_gpu=[bool]$KvCacheGpu;kv_cache_quantization=$KvCacheQuantization;num_experts=$NumExperts;speculative_draft_mtp=[bool]$Mtp;mtp_draft_tokens=$MtpDraftTokens}
     effective_config=$(if($loaded){$loaded.config}else{$null});load_response=$loadResponse
-    gpu=[ordered]@{before_load=$gpuBefore;after_load=$gpuLoaded;after_benchmark=$gpuAfter;headroom_floor_mib=1536;headroom_pass=$headroomPass}
+    gpu=[ordered]@{before_load=$gpuBefore;after_load=$gpuLoaded;after_benchmark=$gpuAfter;headroom_floor_mib=1536;headroom_pass=$headroomPass;kv_quantization_verified=$script:KvQuantizationVerified}
     lms_ps=$lmsPs;summaries=$summaries;quality=$quality;native_per_run=$script:NativeResults;per_run=$script:Results
     run_error=$script:RunError;incomplete=($null-ne$script:RunError)
 }
