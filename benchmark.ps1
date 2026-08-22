@@ -40,6 +40,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'harness-lib.ps1')
 $script:ExplicitPhysicalBatch = $PSBoundParameters.ContainsKey('PhysicalBatchSize')
 $script:ApiRoot = $ApiRoot.TrimEnd('/')
 $script:OpenAiRoot = "$($script:ApiRoot)/v1"
@@ -52,28 +53,6 @@ function Get-Prop {
     $property = $Object.PSObject.Properties[$Name]
     if ($null -eq $property -or $null -eq $property.Value) { return $Default }
     return $property.Value
-}
-
-function Convert-MiBValue {
-    param([AllowNull()][string] $Text)
-    if ($null -eq $Text) { return $null }
-    $parsed = 0
-    if ([int]::TryParse($Text.Trim().Trim('[', ']'), [ref]$parsed)) { return $parsed }
-    return $null
-}
-
-function Get-GpuSnapshot {
-    $raw = & nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,pstate --format=csv,noheader,nounits 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $raw) { return $null }
-    $lines = @($raw)
-    if ($lines.Count -gt 1) { Write-Warning "nvidia-smi reported $($lines.Count) GPUs; capturing the first only." }
-    $parts = @($lines[0] -split ',' | ForEach-Object { $_.Trim() })
-    if ($parts.Count -lt 6) { Write-Warning "Unexpected nvidia-smi output; GPU snapshot skipped."; return $null }
-    [pscustomobject]@{
-        name=$parts[0]; memory_total_mib=(Convert-MiBValue $parts[1]); memory_used_mib=(Convert-MiBValue $parts[2])
-        memory_free_mib=(Convert-MiBValue $parts[3]); utilization_pct=(Convert-MiBValue $parts[4]); pstate=$parts[5]
-        captured_at=(Get-Date).ToString('o')
-    }
 }
 
 function Get-LmModels {
@@ -446,7 +425,7 @@ try {
         if($null-eq$loaded){throw "Model '${Model}' is not loaded after load step."}
     }
     Assert-EffectiveConfig -Config $loaded.config
-    $lmsPs=(& lms ps --json 2>&1|Out-String).Trim()
+    $lmsPs=Get-LmsPsSnapshot
     if($KvCacheGpu-and-not[bool]$loaded.config.offload_kv_cache_to_gpu){throw 'GPU KV cache requested but inactive; refusing CPU-spill benchmark.'}
 
     Write-Host 'Warming model and CUDA kernels...'
