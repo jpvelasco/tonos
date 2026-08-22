@@ -104,7 +104,7 @@ function Load-BenchmarkModel {
         if ($Mtp) { throw 'MTP and quantized KV loading cannot be combined by this LM Studio SDK version.' }
         $loader = Join-Path $PSScriptRoot 'load-model.mjs'
         Write-Host "Loading ${Model} through LM Studio SDK: context=${ContextLength}, parallel=${Parallel}, batch=${EvalBatchSize}, KV-GPU=${KvCacheQuantization}, MTP=false"
-        $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --experts $NumExperts --kv $KvCacheQuantization
+        $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --physical-batch $PhysicalBatchSize --experts $NumExperts --kv $KvCacheQuantization
         if ($LASTEXITCODE -ne 0) { throw "LM Studio SDK loader failed with exit code ${LASTEXITCODE}." }
         return ($loaderOutput | Select-Object -Last 1 | ConvertFrom-Json)
     }
@@ -134,6 +134,18 @@ function Assert-EffectiveConfig {
         if ("$actual" -ne "$($entry.Value)") { $mismatches.Add("$($entry.Key): requested=$($entry.Value), effective=${actual}") }
     }
     if ($mismatches.Count -gt 0) { throw "LM Studio did not apply requested config: $($mismatches -join '; ')" }
+    if ($KvCacheGpu -and $KvCacheQuantization -ne 'f16') {
+        $kvKeys = @('kv_cache_quantization', 'llama_k_cache_quantization_type', 'llama_v_cache_quantization_type')
+        $observed = @($kvKeys | ForEach-Object {
+            $value = Get-Prop $Config $_
+            if ($null -ne $value) { "${_}=${value}" }
+        })
+        $confirmed = $observed | Where-Object { ($_ -split '=', 2)[1] -ieq $KvCacheQuantization }
+        if (-not $confirmed) {
+            $reported = if ($observed.Count -gt 0) { "server reported: $($observed -join ', ')" } else { 'server reported no KV quantization fields' }
+            throw "KV cache quantization '${KvCacheQuantization}' was requested but not confirmed in the effective config; ${reported}."
+        }
+    }
 }
 
 function New-OpenCodeLikePrompt {

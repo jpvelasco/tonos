@@ -34,6 +34,14 @@ if (!fs.existsSync(sdkPath)) {
   throw new Error(`LM Studio SDK not found at ${sdkPath}. Set LMSTUDIO_SDK_PATH to its index.mjs file.`);
 }
 const { LMStudioClient } = await import(pathToFileURL(sdkPath).href);
+const apiRoot = args.server.replace(/\/$/, "");
+const catalogResponse = await fetch(`${apiRoot}/api/v1/models`);
+if (!catalogResponse.ok) throw new Error(`Model catalog request failed: HTTP ${catalogResponse.status}`);
+const catalog = await catalogResponse.json();
+const targetRecord = catalog.models?.find((candidate) => candidate.key === args.model);
+if (!targetRecord) throw new Error(`Model ${args.model} not found in installed catalog`);
+const isMoe = /moe/i.test(String(targetRecord.architecture ?? ""));
+
 const baseUrl = args.server.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
 const client = new LMStudioClient({ baseUrl, verboseErrorMessages: true });
 
@@ -41,22 +49,24 @@ for (const loaded of await client.llm.listLoaded()) await loaded.unload();
 
 let lastProgress = -1;
 let loadError;
+const config = {
+    gpu: { ratio: "max", numCpuExpertLayersRatio: "off", mainGpu: 0 },
+    maxParallelPredictions: Number(args.parallel),
+    useUnifiedKvCache: true,
+    gpuStrictVramCap: true,
+    offloadKVCacheToGpu: true,
+    contextLength: Number(args.context),
+    evalBatchSize: Number(args.batch),
+    flashAttention: true,
+    keepModelInMemory: true,
+    llamaKCacheQuantizationType: args.kv,
+    llamaVCacheQuantizationType: args.kv,
+};
+if (isMoe) config.numExperts = Number(args.experts);
+if (args["physical-batch"] !== undefined) config.physicalBatchSize = Number(args["physical-batch"]);
 client.llm.load(args.model, {
     identifier: args.model,
-    config: {
-      gpu: { ratio: "max", numCpuExpertLayersRatio: "off", mainGpu: 0 },
-      maxParallelPredictions: Number(args.parallel),
-      useUnifiedKvCache: true,
-      gpuStrictVramCap: true,
-      offloadKVCacheToGpu: true,
-      contextLength: Number(args.context),
-      evalBatchSize: Number(args.batch),
-      flashAttention: true,
-      keepModelInMemory: true,
-      numExperts: Number(args.experts),
-      llamaKCacheQuantizationType: args.kv,
-      llamaVCacheQuantizationType: args.kv,
-    },
+    config,
     onProgress(progress) {
       const percent = Math.floor(progress * 100);
       if (percent >= lastProgress + 10) {
@@ -68,7 +78,6 @@ client.llm.load(args.model, {
     loadError = error;
   });
 
-const apiRoot = args.server.replace(/\/$/, "");
 const deadline = Date.now() + 300_000;
 let instance;
 while (Date.now() < deadline) {
