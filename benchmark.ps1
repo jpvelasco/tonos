@@ -131,7 +131,10 @@ function Load-BenchmarkModel {
         $loader = Join-Path $PSScriptRoot 'load-model.mjs'
         Write-Host "Loading ${Model} through LM Studio SDK: context=${ContextLength}, parallel=${Parallel}, batch=${EvalBatchSize}, KV-GPU=${KvCacheQuantization}, MTP=false (physical batch not controllable; server default applies)"
         $loaderOutput = & node $loader --model $Model --server $script:ApiRoot --context $ContextLength --parallel $Parallel --batch $EvalBatchSize --experts $NumExperts --kv $KvCacheQuantization --load-timeout-ms ([int]($LoadTimeoutSec * 1000))
-        if ($LASTEXITCODE -ne 0) { throw "LM Studio SDK loader failed with exit code ${LASTEXITCODE}." }
+        $loaderExit = $LASTEXITCODE
+        $teardownFailFast = -1073740791
+        if (-not $loaderOutput) { throw "LM Studio SDK loader produced no instance JSON (exit ${loaderExit})." }
+        if ($loaderExit -ne 0 -and $loaderExit -ne $teardownFailFast) { throw "LM Studio SDK loader failed with exit code ${loaderExit}." }
         return ($loaderOutput | Select-Object -Last 1 | ConvertFrom-Json)
     }
     $body = @{
