@@ -5,10 +5,11 @@ PowerShell toolkit that benchmarks and qualifies local LLMs on bench-rig (RTX 40
 ## Verify changes
 
 ```powershell
-.\check-syntax.ps1   # parses every *.ps1 + node --check load-model.mjs
+.\check-syntax.ps1    # parses every *.ps1 + node --check load-model.mjs
+.\tests\run-tests.ps1 # zero-dependency BDD-style unit tests (tests/*.Tests.ps1)
 ```
 
-This is the only offline check. There are no unit tests for the harness itself.
+These are the only offline checks. Harness logic is tested through injectable command scriptblocks; live-server behavior still requires LM Studio.
 
 ## Hard dependencies
 
