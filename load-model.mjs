@@ -63,7 +63,6 @@ const config = {
     llamaVCacheQuantizationType: args.kv,
 };
 if (isMoe) config.numExperts = Number(args.experts);
-if (args["physical-batch"] !== undefined) config.physicalBatchSize = Number(args["physical-batch"]);
 client.llm.load(args.model, {
     identifier: args.model,
     config,
