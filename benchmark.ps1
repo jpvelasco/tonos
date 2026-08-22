@@ -373,45 +373,53 @@ function Invoke-GoQualityTest {
 New-Item -ItemType Directory -Path $OutDir -Force|Out-Null
 $catalogRecord=Get-ModelRecord -Key $Model
 $gpuBefore=Get-GpuSnapshot
-$loadResponse=$null
-if(-not$SkipLoad){$loadResponse=Load-BenchmarkModel -Record $catalogRecord}
-$loaded=Get-LoadedInstance -Key $Model
-if($null-eq$loaded){throw "Model '${Model}' is not loaded after load step."}
-Assert-EffectiveConfig -Config $loaded.config
-$lmsPs=(& lms ps --json 2>&1|Out-String).Trim()
-if($KvCacheGpu-and-not[bool]$loaded.config.offload_kv_cache_to_gpu){throw 'GPU KV cache requested but inactive; refusing CPU-spill benchmark.'}
+$script:RunError=$null
+$caught=$null
+$loadResponse=$null; $loaded=$null; $lmsPs=$null
+$gpuLoaded=$null; $gpuAfter=$null; $quality=$null
+try {
+    if(-not$SkipLoad){$loadResponse=Load-BenchmarkModel -Record $catalogRecord}
+    $loaded=Get-LoadedInstance -Key $Model
+    if($null-eq$loaded){throw "Model '${Model}' is not loaded after load step."}
+    Assert-EffectiveConfig -Config $loaded.config
+    $lmsPs=(& lms ps --json 2>&1|Out-String).Trim()
+    if($KvCacheGpu-and-not[bool]$loaded.config.offload_kv_cache_to_gpu){throw 'GPU KV cache requested but inactive; refusing CPU-spill benchmark.'}
 
-Write-Host 'Warming model and CUDA kernels...'
-Invoke-StreamingCompletion -Messages @(@{role='user';content='Return exactly: READY'}) -Phase 'warmup' -TokenLimit 16|Out-Null
-$gpuLoaded=Get-GpuSnapshot
-$reasoningCapability=Get-Prop (Get-Prop $catalogRecord 'capabilities') 'reasoning'
-$reasoningOptions=@(Get-Prop $reasoningCapability 'allowed_options' @())
-$decodePrompt='Generate a numbered list of 300 distinct, valid Go variable names. Do not explain, summarize, or stop early.'
-if($reasoningOptions -contains 'off'){
-    Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-off' -Reasoning off -TokenLimit $MaxTokens|Out-Null
-}
-if($reasoningOptions -contains 'on'){
-    Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-on' -Reasoning on -TokenLimit $MaxTokens|Out-Null
-}
-if($reasoningOptions.Count-eq0){
-    Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-auto' -Reasoning auto -TokenLimit $MaxTokens|Out-Null
-}
-$promptTargets=switch($Suite){'Quick'{@(1000)}'OpenCode'{@($OpenCodePromptTokens)}'Full'{@(1000,8000,$OpenCodePromptTokens,32000)}}
-foreach($target in $promptTargets){
-    for($run=1;$run-le$Runs;$run++){
-        $prompt=New-OpenCodeLikePrompt -ApproxTokens $target -Nonce ([guid]::NewGuid().ToString('N'))
-        $baseMessages=@(@{role='user';content=$prompt})
-        Invoke-StreamingCompletion -Messages $baseMessages -Phase "cold-${target}" -TokenLimit 8|Out-Null
-        if($Suite-ne'Quick'){
-            Invoke-StreamingCompletion -Messages $baseMessages -Phase "reuse-${target}" -TokenLimit 8|Out-Null
-            $extended=@(@{role='user';content=$prompt},@{role='assistant';content='Acknowledged.'},@{role='user';content='Now answer the final task in one sentence.'})
-            Invoke-StreamingCompletion -Messages $extended -Phase "append-${target}" -TokenLimit 8|Out-Null
+    Write-Host 'Warming model and CUDA kernels...'
+    Invoke-StreamingCompletion -Messages @(@{role='user';content='Return exactly: READY'}) -Phase 'warmup' -TokenLimit 16|Out-Null
+    $gpuLoaded=Get-GpuSnapshot
+    $reasoningCapability=Get-Prop (Get-Prop $catalogRecord 'capabilities') 'reasoning'
+    $reasoningOptions=@(Get-Prop $reasoningCapability 'allowed_options' @())
+    $decodePrompt='Generate a numbered list of 300 distinct, valid Go variable names. Do not explain, summarize, or stop early.'
+    if($reasoningOptions -contains 'off'){
+        Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-off' -Reasoning off -TokenLimit $MaxTokens|Out-Null
+    }
+    if($reasoningOptions -contains 'on'){
+        Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-on' -Reasoning on -TokenLimit $MaxTokens|Out-Null
+    }
+    if($reasoningOptions.Count-eq0){
+        Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-auto' -Reasoning auto -TokenLimit $MaxTokens|Out-Null
+    }
+    $promptTargets=switch($Suite){'Quick'{@(1000)}'OpenCode'{@($OpenCodePromptTokens)}'Full'{@(1000,8000,$OpenCodePromptTokens,32000)}}
+    foreach($target in $promptTargets){
+        for($run=1;$run-le$Runs;$run++){
+            $prompt=New-OpenCodeLikePrompt -ApproxTokens $target -Nonce ([guid]::NewGuid().ToString('N'))
+            $baseMessages=@(@{role='user';content=$prompt})
+            Invoke-StreamingCompletion -Messages $baseMessages -Phase "cold-${target}" -TokenLimit 8|Out-Null
+            if($Suite-ne'Quick'){
+                Invoke-StreamingCompletion -Messages $baseMessages -Phase "reuse-${target}" -TokenLimit 8|Out-Null
+                $extended=@(@{role='user';content=$prompt},@{role='assistant';content='Acknowledged.'},@{role='user';content='Now answer the final task in one sentence.'})
+                Invoke-StreamingCompletion -Messages $extended -Phase "append-${target}" -TokenLimit 8|Out-Null
+            }
         }
     }
+    if($RunQuality){Write-Host 'Running executable Go quality test...';$quality=Invoke-GoQualityTest}
+    $gpuAfter=Get-GpuSnapshot
+} catch {
+    $caught=$_
+    $script:RunError=$_.Exception.Message
+    Write-Warning "Benchmark aborted before completion: $($script:RunError) (partial results will still be saved)"
 }
-$quality=$null
-if($RunQuality){Write-Host 'Running executable Go quality test...';$quality=Invoke-GoQualityTest}
-$gpuAfter=Get-GpuSnapshot
 $phaseNames=@($script:Results.phase|Where-Object{$_-ne'warmup'}|Sort-Object -Unique)
 $summaries=[ordered]@{}
 foreach($phase in $phaseNames){$summaries[$phase]=Get-PhaseSummary -Phase $phase}
@@ -421,12 +429,14 @@ $document=[ordered]@{
     model=[ordered]@{key=$catalogRecord.key;display_name=$catalogRecord.display_name;architecture=$catalogRecord.architecture;quantization=$catalogRecord.quantization;size_bytes=$catalogRecord.size_bytes;params_string=$catalogRecord.params_string;max_context_length=$catalogRecord.max_context_length}
     benchmark=[ordered]@{suite=$Suite;runs=$Runs;max_tokens=$MaxTokens;timeout_sec=$TimeoutSec;open_code_prompt_target=$OpenCodePromptTokens;temperature=$Temperature;reasoning_effort=$ReasoningEffort}
     requested_config=[ordered]@{context_length=$ContextLength;parallel=$Parallel;eval_batch_size=$EvalBatchSize;physical_batch_size=$PhysicalBatchSize;flash_attention=$true;offload_kv_cache_to_gpu=[bool]$KvCacheGpu;kv_cache_quantization=$KvCacheQuantization;num_experts=$NumExperts;speculative_draft_mtp=[bool]$Mtp;mtp_draft_tokens=$MtpDraftTokens}
-    effective_config=$loaded.config;load_response=$loadResponse
+    effective_config=$(if($loaded){$loaded.config}else{$null});load_response=$loadResponse
     gpu=[ordered]@{before_load=$gpuBefore;after_load=$gpuLoaded;after_benchmark=$gpuAfter;headroom_floor_mib=1536;headroom_pass=$headroomPass}
     lms_ps=$lmsPs;summaries=$summaries;quality=$quality;native_per_run=$script:NativeResults;per_run=$script:Results
+    run_error=$script:RunError;incomplete=($null-ne$script:RunError)
 }
 $timestamp=Get-Date -Format 'yyyyMMdd-HHmmssfff'
 $outputPath=Join-Path $OutDir "${timestamp}-${Label}.json"
 $document|ConvertTo-Json -Depth 16|Set-Content -LiteralPath $outputPath -Encoding utf8
 Write-Host "Saved ${outputPath}"
 if($headroomPass-eq$false){Write-Warning "Only $($gpuLoaded.memory_free_mib) MiB VRAM remained after load; configuration fails headroom criterion."}
+if($null-ne$caught){throw $caught.Exception}
