@@ -13,6 +13,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ApiRoot = $ApiRoot.TrimEnd('/')
+. (Join-Path $PSScriptRoot 'harness-lib.ps1')
 
 function Get-Catalog {
     Invoke-RestMethod -Method Get -Uri "${ApiRoot}/api/v1/models" -TimeoutSec 30
@@ -35,9 +36,9 @@ switch ($Action) {
         & lms ps
     }
     'status' {
-        $openAi = Invoke-RestMethod -Method Get -Uri "${ApiRoot}/v1/models" -TimeoutSec 10
+        $catalog = Get-Catalog
         Write-Host "LM Studio is responding at ${ApiRoot}." -ForegroundColor Green
-        $openAi.data | Select-Object id, object, owned_by | Format-Table -AutoSize
+        Get-StatusRows -Models @($catalog.models) | Format-Table -AutoSize
     }
     'unload' {
         $instances = @((Get-Catalog).models | Where-Object type -eq 'llm' | ForEach-Object { $_.loaded_instances })
