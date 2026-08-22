@@ -12,9 +12,9 @@
 param(
     [ValidateSet('All', 'Gemma', 'QwenBase', 'QwenMtp')]
     [string] $Selection = 'All',
-    [ValidateRange(1, 10)][int] $Runs = 3,
-    [ValidateRange(8, 8192)][int] $MaxTokens = 512,
-    [ValidateRange(10, 300)][int] $TimeoutSec = 300,
+    [int] $Runs = 3,
+    [int] $MaxTokens = 512,
+    [int] $TimeoutSec = 300,
     [switch] $SkipQuality,
     [string] $ApiRoot = 'http://192.168.0.112:1234'
 )
