@@ -78,7 +78,10 @@ client.llm.load(args.model, {
     loadError = error;
   });
 
-const deadline = Date.now() + 300_000;
+const loadTimeoutMs = args["load-timeout-ms"] !== undefined ? Number(args["load-timeout-ms"]) : 300_000;
+if (!Number.isFinite(loadTimeoutMs) || loadTimeoutMs <= 0) throw new Error(`Invalid --load-timeout-ms: ${args["load-timeout-ms"]}`);
+const start = Date.now();
+const deadline = start + loadTimeoutMs;
 let instance;
 while (Date.now() < deadline) {
   if (loadError) throw loadError;
@@ -91,7 +94,7 @@ while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
-if (!instance) throw new Error("Model load did not finish within 300 seconds");
+if (!instance) throw new Error(`Model load did not finish within ${Math.round(loadTimeoutMs / 1000)} seconds`);
 process.stdout.write(`${JSON.stringify(instance)}\n`);
 await Promise.race([
   client[Symbol.asyncDispose](),
