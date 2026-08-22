@@ -381,10 +381,16 @@ function Invoke-GoQualityTest {
     if(-not(Test-Path -LiteralPath $PromptFile -PathType Leaf)){throw "Coding prompt not found: ${PromptFile}"}
     $prompt=Get-Content -LiteralPath $PromptFile -Raw -Encoding utf8
     $result=Invoke-StreamingCompletion -Messages @(@{role='user';content=$prompt}) -Phase 'coding-quality' -TokenLimit $QualityMaxTokens -Capture
-    $quality=[ordered]@{visible_output=$result.visible_output;executable=$false;go_test_passed=$false;go_test_output=$null}
+    $quality=[ordered]@{visible_output=$result.visible_output;extraction='none';executable=$false;go_test_passed=$false;go_test_output=$null}
     if(-not$result.visible_output){return [pscustomobject]$quality}
-    $match=[regex]::Match($result.text,'(?s)```(?:go)?\s*(.*?)```')
-    if(-not$match.Success){return [pscustomobject]$quality}
+    $match=[regex]::Match($result.text,'(?s)```go\s*(.*?)```')
+    if($match.Success){
+        $quality.extraction='go-tagged'
+    } else {
+        $match=[regex]::Match($result.text,'(?s)```\s*(.*?)```')
+        if(-not$match.Success){return [pscustomobject]$quality}
+        $quality.extraction='untagged-fallback'
+    }
     $code=$match.Groups[1].Value
     if($code-notmatch'(?m)^\s*package\s+retry\s*$'){return [pscustomobject]$quality}
     $testRoot=Join-Path $env:TEMP "bench-rig-quality-$([guid]::NewGuid().ToString('N'))"
