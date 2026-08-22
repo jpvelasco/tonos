@@ -26,8 +26,8 @@ switch ($Action) {
             Format-Table -AutoSize
     }
     'loaded' {
-        $instances = @((Get-Catalog).models | ForEach-Object { $_.loaded_instances })
-        if ($instances.Count -eq 0) { Write-Host 'No model is loaded.'; break }
+        $instances = @((Get-Catalog).models | Where-Object type -eq 'llm' | ForEach-Object { $_.loaded_instances })
+        if ($instances.Count -eq 0) { Write-Host 'No LLM is loaded.'; break }
         $instances | Select-Object id, status,
             @{Name='context_length';Expression={$_.config.context_length}},
             @{Name='parallel';Expression={$_.config.parallel}},
