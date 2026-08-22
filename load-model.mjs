@@ -45,8 +45,6 @@ const isMoe = /moe/i.test(String(targetRecord.architecture ?? ""));
 const baseUrl = args.server.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
 const client = new LMStudioClient({ baseUrl, verboseErrorMessages: true });
 
-for (const loaded of await client.llm.listLoaded()) await loaded.unload();
-
 let lastProgress = -1;
 let loadError;
 const config = {
@@ -79,6 +77,10 @@ client.llm.load(args.model, {
 
 const loadTimeoutMs = args["load-timeout-ms"] !== undefined ? Number(args["load-timeout-ms"]) : 300_000;
 if (!Number.isFinite(loadTimeoutMs) || loadTimeoutMs <= 0) throw new Error(`Invalid --load-timeout-ms: ${args["load-timeout-ms"]}`);
+setTimeout(() => {
+  process.stderr.write(`Loader watchdog: exceeded ${Math.round(loadTimeoutMs / 1000)}s + grace; aborting.\n`);
+  process.exit(1);
+}, loadTimeoutMs + 15_000);
 const start = Date.now();
 const deadline = start + loadTimeoutMs;
 let instance;
