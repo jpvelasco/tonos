@@ -423,7 +423,7 @@ try {
 $phaseNames=@($script:Results.phase|Where-Object{$_-ne'warmup'}|Sort-Object -Unique)
 $summaries=[ordered]@{}
 foreach($phase in $phaseNames){$summaries[$phase]=Get-PhaseSummary -Phase $phase}
-$headroomPass=if($gpuLoaded){$gpuLoaded.memory_free_mib-ge1536}else{$null}
+$headroomPass=if($gpuAfter){$gpuAfter.memory_free_mib-ge1536}else{$false}
 $document=[ordered]@{
     schema_version=3;timestamp=(Get-Date).ToString('o');label=$Label
     model=[ordered]@{key=$catalogRecord.key;display_name=$catalogRecord.display_name;architecture=$catalogRecord.architecture;quantization=$catalogRecord.quantization;size_bytes=$catalogRecord.size_bytes;params_string=$catalogRecord.params_string;max_context_length=$catalogRecord.max_context_length}
@@ -438,5 +438,6 @@ $timestamp=Get-Date -Format 'yyyyMMdd-HHmmssfff'
 $outputPath=Join-Path $OutDir "${timestamp}-${Label}.json"
 $document|ConvertTo-Json -Depth 16|Set-Content -LiteralPath $outputPath -Encoding utf8
 Write-Host "Saved ${outputPath}"
-if($headroomPass-eq$false){Write-Warning "Only $($gpuLoaded.memory_free_mib) MiB VRAM remained after load; configuration fails headroom criterion."}
+if($null-eq$gpuAfter){Write-Warning 'GPU telemetry unavailable; VRAM headroom criterion could not be evaluated and fails closed.'}
+elseif($headroomPass-eq$false){Write-Warning "Only $($gpuAfter.memory_free_mib) MiB VRAM remained after the benchmark run; configuration fails headroom criterion."}
 if($null-ne$caught){throw $caught.Exception}
