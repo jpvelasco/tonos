@@ -26,12 +26,30 @@ for (const required of ["model", "server", "context", "parallel", "batch", "expe
 const allowedKv = new Set(["f16", "q8_0", "q4_0"]);
 if (!allowedKv.has(args.kv)) throw new Error(`Unsupported KV cache type: ${args.kv}`);
 
-const sdkPath = process.env.LMSTUDIO_SDK_PATH || path.join(
-  os.homedir(), ".lmstudio", "extensions", "plugins", "lmstudio",
-  "js-code-sandbox", "node_modules", "@lmstudio", "sdk", "dist", "index.mjs",
-);
-if (!fs.existsSync(sdkPath)) {
-  throw new Error(`LM Studio SDK not found at ${sdkPath}. Set LMSTUDIO_SDK_PATH to its index.mjs file.`);
+function resolveSdkPath() {
+  if (process.env.LMSTUDIO_SDK_PATH) return process.env.LMSTUDIO_SDK_PATH;
+  const pluginsRoot = path.join(os.homedir(), ".lmstudio", "extensions", "plugins");
+  let best;
+  let publishers;
+  try { publishers = fs.readdirSync(pluginsRoot, { withFileTypes: true }); } catch { return undefined; }
+  for (const publisher of publishers) {
+    if (!publisher.isDirectory()) continue;
+    let plugins;
+    try { plugins = fs.readdirSync(path.join(pluginsRoot, publisher.name), { withFileTypes: true }); } catch { continue; }
+    for (const plugin of plugins) {
+      if (!plugin.isDirectory()) continue;
+      const candidate = path.join(pluginsRoot, publisher.name, plugin.name, "node_modules", "@lmstudio", "sdk", "dist", "index.mjs");
+      if (!fs.existsSync(candidate)) continue;
+      const mtime = fs.statSync(candidate).mtimeMs;
+      if (!best || mtime > best.mtime) best = { path: candidate, mtime };
+    }
+  }
+  return best?.path;
+}
+
+const sdkPath = resolveSdkPath();
+if (!sdkPath) {
+  throw new Error("No @lmstudio/sdk found under ~/.lmstudio/extensions/plugins. Set LMSTUDIO_SDK_PATH to its index.mjs file.");
 }
 const { LMStudioClient } = await import(pathToFileURL(sdkPath).href);
 const apiRoot = args.server.replace(/\/$/, "");
@@ -97,8 +115,4 @@ while (Date.now() < deadline) {
 
 if (!instance) throw new Error(`Model load did not finish within ${Math.round(loadTimeoutMs / 1000)} seconds`);
 process.stdout.write(`${JSON.stringify(instance)}\n`);
-await Promise.race([
-  client[Symbol.asyncDispose](),
-  new Promise((resolve) => setTimeout(resolve, 2_000)),
-]);
 process.exit(0);
