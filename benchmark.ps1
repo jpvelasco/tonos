@@ -53,13 +53,24 @@ function Get-Prop {
     return $property.Value
 }
 
+function Convert-MiBValue {
+    param([AllowNull()][string] $Text)
+    if ($null -eq $Text) { return $null }
+    $parsed = 0
+    if ([int]::TryParse($Text.Trim().Trim('[', ']'), [ref]$parsed)) { return $parsed }
+    return $null
+}
+
 function Get-GpuSnapshot {
     $raw = & nvidia-smi --query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,pstate --format=csv,noheader,nounits 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $raw) { return $null }
-    $parts = @($raw -split ',' | ForEach-Object { $_.Trim() })
+    $lines = @($raw)
+    if ($lines.Count -gt 1) { Write-Warning "nvidia-smi reported $($lines.Count) GPUs; capturing the first only." }
+    $parts = @($lines[0] -split ',' | ForEach-Object { $_.Trim() })
+    if ($parts.Count -lt 6) { Write-Warning "Unexpected nvidia-smi output; GPU snapshot skipped."; return $null }
     [pscustomobject]@{
-        name=$parts[0]; memory_total_mib=[int]$parts[1]; memory_used_mib=[int]$parts[2]
-        memory_free_mib=[int]$parts[3]; utilization_pct=[int]$parts[4]; pstate=$parts[5]
+        name=$parts[0]; memory_total_mib=(Convert-MiBValue $parts[1]); memory_used_mib=(Convert-MiBValue $parts[2])
+        memory_free_mib=(Convert-MiBValue $parts[3]); utilization_pct=(Convert-MiBValue $parts[4]); pstate=$parts[5]
         captured_at=(Get-Date).ToString('o')
     }
 }
