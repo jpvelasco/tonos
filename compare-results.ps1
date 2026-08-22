@@ -86,7 +86,7 @@ $rows = foreach ($file in Get-ChildItem -LiteralPath $ResultsDir -Filter '*.json
             CodingTokS = if ($qualityRun) { [math]::Round([double]$qualityRun.text_tok_s, 2) } else { $null }
             ReasonPct = if ($null -ne $reasonPct) { [math]::Round($reasonPct, 1) } else { $null }
             Quality = $quality
-            FreeVRAMMiB = [int]$result.gpu.after_benchmark.memory_free_mib
+            FreeVRAMMiB = if ($result.gpu.after_benchmark -and $null -ne $result.gpu.after_benchmark.memory_free_mib) { [int]$result.gpu.after_benchmark.memory_free_mib } else { $null }
             Timestamp = [datetime]$result.timestamp
             File = ${file}.Name
         }
