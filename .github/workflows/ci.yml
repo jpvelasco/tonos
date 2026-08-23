@@ -27,7 +27,11 @@ jobs:
         run: ./tests/run-tests.ps1
 
   node-gates:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +46,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Domain tests
+      - name: Domain and runner acceptance tests
         run: npm test
 
       - name: Generated schemas and goldens are in sync
