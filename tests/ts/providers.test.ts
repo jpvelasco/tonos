@@ -20,10 +20,23 @@ async function listen(server: Server): Promise<string> {
   throw new Error('no address');
 }
 
-function sseServer(): { server: Server; hits: string[] } {
+interface FixtureServer {
+  server: Server;
+  hits: string[];
+  /** When armed, the next incoming connection is destroyed pre-response. */
+  armReset(): void;
+}
+
+function sseServer(): FixtureServer {
   const hits: string[] = [];
+  let resetArmed = false;
   const server = createServer((req, res) => {
     hits.push(`${req.method} ${req.url}`);
+    if (resetArmed) {
+      resetArmed = false;
+      res.socket?.destroy();
+      return;
+    }
     if (req.url === '/v1/chat/completions') {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.write(
@@ -46,13 +59,19 @@ function sseServer(): { server: Server; hits: string[] } {
     res.writeHead(404);
     res.end();
   });
-  return { server, hits };
+  return { server, hits, armReset: () => { resetArmed = true; } };
 }
 
-function jsonLineServer(): { server: Server; hits: string[] } {
+function jsonLineServer(): FixtureServer {
   const hits: string[] = [];
+  let resetArmed = false;
   const server = createServer((req, res) => {
     hits.push(`${req.method} ${req.url}`);
+    if (resetArmed) {
+      resetArmed = false;
+      res.socket?.destroy();
+      return;
+    }
     if (req.url === '/chat') {
       res.writeHead(200, { 'content-type': 'application/x-ndjson' });
       res.write(JSON.stringify({ kind: 'piece', text: 'Hel' }) + '\n');
@@ -68,10 +87,10 @@ function jsonLineServer(): { server: Server; hits: string[] } {
       res.end();
       return;
     }
-    res.writeHead(404);
-    res.end();
-  });
-  return { server, hits };
+      res.writeHead(404);
+      res.end();
+    });
+  return { server, hits, armReset: () => { resetArmed = true; } };
 }
 
 test('openai-compatible and json-line fixtures map the same logical exchange to equivalent canonical observations', async () => {
@@ -207,5 +226,46 @@ test('the same adapter serves loopback IPs and hostnames identically', async () 
   assert.equal(a.observation.terminalReason, 'completed');
   assert.equal(b.observation.terminalReason, 'completed');
   assert.deepEqual(a.observation.usage, b.observation.usage);
+});
+
+test('a transient pre-response connection reset is retried transparently by both protocol adapters', async () => {
+  // Deterministic repro of the intermittent equivalence failure: the first
+  // connection each server accepts is destroyed before any response bytes.
+  // Without a transport retry this surfaces as text '' with terminalReason
+  // 'cancelled'; both adapters must recover through one transparent retry.
+  for (let iteration = 0; iteration < 5; iteration++) {
+    const sse = sseServer();
+    const jsonl = jsonLineServer();
+    sse.armReset();
+    jsonl.armReset();
+    const sseUrl = await listen(sse.server);
+    const jsonlUrl = await listen(jsonl.server);
+
+    const [viaSse, viaJsonl] = await Promise.all([
+      runOpenAiCompatibleExchange({
+        baseUrl: `${sseUrl}/v1`,
+        modelAlias: 'test-model',
+        prompt: `say hi ${CANARY}`,
+        maxOutputTokens: 32,
+        timeoutMs: 5_000,
+      }),
+      runJsonLineFixtureExchange({
+        baseUrl: jsonlUrl,
+        modelAlias: 'test-model',
+        prompt: `say hi ${CANARY}`,
+        maxOutputTokens: 32,
+        timeoutMs: 5_000,
+      }),
+    ]);
+
+    for (const server of [sse.server, jsonl.server]) server.close();
+
+    assert.equal(viaSse.observation.terminalReason, 'completed');
+    assert.equal(viaSse.text, 'Hello');
+    assert.equal(viaSse.finishReason, 'stop');
+    assert.equal(viaJsonl.observation.terminalReason, 'completed');
+    assert.equal(viaJsonl.text, 'Hello');
+    assert.equal(viaJsonl.finishReason, 'stop');
+  }
 });
 
