@@ -13,7 +13,7 @@
 
 ## Evaluated Models (16 GB VRAM)
 
-**External baseline (Batwing box `192.168.0.131`):** `qwen36-27b-nvfp4` remains the primary coder outside this machine. Its NVIDIA FP4 quant is optimized for Blackwell and is not a local Ada Lovelace candidate.
+**External baseline (`192.168.0.131`):** `qwen36-27b-nvfp4` remains the primary coder outside this machine. Its NVIDIA FP4 quant is optimized for Blackwell and is not a local Ada Lovelace candidate.
 
 **Batmobile (`192.168.0.112`, RTX 4070 Ti Super):**
 

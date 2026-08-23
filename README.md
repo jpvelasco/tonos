@@ -1,4 +1,4 @@
-# Batwing Tuner
+# Tonos
 
 Local LM Studio benchmark and qualification tools for the Batmobile RTX 4070 Ti Super workstation.
 
