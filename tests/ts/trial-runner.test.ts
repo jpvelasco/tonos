@@ -11,6 +11,10 @@ import { fixtureTrialDeclaration } from '../fixtures/records.ts';
 import {
   TrialRunner,
 } from '../../core/trial-runner.ts';
+import { composeTrialResult } from '../../core/result-composition.ts';
+import { encode, decode } from '../../core/codec.ts';
+import { trialIdOf } from '../../core/records/trial.ts';
+import type { TrialResult } from '../../core/records/trial.ts';
 import type {
   Clock,
   EvidenceSink,
@@ -206,6 +210,96 @@ test('ambient environment secrets never reach the child; sentinel stays untouche
     await rm(fakeHome, { recursive: true, force: true });
     await rm(template, { recursive: true, force: true });
   }
+});
+
+test('a completed run composes into a codec-valid TrialResult with persisted workspace evidence', async () => {
+  const template = await writeTemplate();
+  const runner = makeRunner();
+  const declaration = fixtureTrialDeclaration();
+  const editAndEmit =
+    "require('fs').writeFileSync('notes.txt', 'written by harness\\n');" +
+    "console.log(JSON.stringify({ tonos_event: 'tool', tool: 'apply-diff', ok: true }));";
+  const seenContexts: unknown[] = [];
+  const templateDigest = await new FileSystemWorkspacePort().snapshot(template);
+
+  const output = await runner.run({
+    declaration,
+    harnessArgv: [process.execPath, '-e', editAndEmit],
+    workspaceTemplateDir: template,
+    evaluate: async (context) => {
+      seenContexts.push(context);
+      return {
+        outcomes: [
+          { evaluatorId: 'executable-tests', passed: true, subjective: false },
+          { evaluatorId: 'tool-trace', passed: null, subjective: false },
+        ],
+        verificationExit: 0,
+      };
+    },
+  });
+
+  const result = composeTrialResult({ output, declaration });
+  const decoded = decode<TrialResult>('trialResult', encode('trialResult', result));
+
+  assert.equal(decoded.declarationId, trialIdOf(declaration));
+  assert.match(decoded.workspaceAfterDigest ?? '', /^[0-9a-f]{64}$/u);
+  assert.notEqual(
+    decoded.workspaceAfterDigest,
+    templateDigest.inputDigest,
+    'the after-digest must reflect the harness edits',
+  );
+  assert.equal(decoded.diffSummary?.filesChanged, 1);
+  assert.deepEqual(decoded.evaluatorOutcomes, [
+    { evaluatorId: 'executable-tests', passed: true, subjective: false },
+  ]);
+  assert.ok(
+    decoded.missingEvidence.some((entry) => entry.includes('tool-trace')),
+    'a skipped evaluator must surface as missing evidence in the canonical result',
+  );
+  assert.equal(decoded.verificationExit, 0);
+  const context = seenContexts[0] as {
+    evaluatorIds: string[];
+    toolEvents: Array<{ tool: string }>;
+    before: { inputDigest: string };
+    after: { inputDigest: string };
+  };
+  assert.deepEqual(context.evaluatorIds, declaration.taskSuite.evaluatorIds);
+  assert.equal(context.before.inputDigest, templateDigest.inputDigest);
+  assert.equal(context.after.inputDigest, decoded.workspaceAfterDigest);
+  await rm(template, { recursive: true, force: true });
+});
+
+test('an evaluation-hook crash keeps the trial as honest evidence without evaluation claims', async () => {
+  const template = await writeTemplate();
+  const runner = makeRunner();
+  const declaration = fixtureTrialDeclaration();
+
+  const output = await runner.run({
+    declaration,
+    harnessArgv: [
+      process.execPath,
+      '-e',
+      "console.log(JSON.stringify({ tonos_event: 'tool', tool: 'read-file', ok: true }));",
+    ],
+    workspaceTemplateDir: template,
+    evaluate: async () => {
+      throw new Error('evaluator infrastructure unavailable');
+    },
+  });
+
+  assert.equal(output.terminalState, 'passed');
+  assert.deepEqual(output.evaluatorOutcomes, []);
+  assert.ok(
+    output.missingEvidence.some((entry) =>
+      entry.includes('declared evaluators did not run'),
+    ),
+  );
+
+  const result = composeTrialResult({ output, declaration });
+  const decoded = decode<TrialResult>('trialResult', encode('trialResult', result));
+  assert.equal(decoded.verificationExit, null);
+  assert.deepEqual(decoded.evaluatorOutcomes, []);
+  await rm(template, { recursive: true, force: true });
 });
 
 async function assertGrandchildrenAreGone(): Promise<void> {

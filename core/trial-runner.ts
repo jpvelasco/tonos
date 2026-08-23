@@ -7,6 +7,7 @@ import type {
   ProcessPort,
   SecretProvider,
   WorkspacePort,
+  WorkspaceSnapshot,
 } from './ports.ts';
 import type { TerminalState } from './records/trial.ts';
 import type { TrialDeclarationPayload } from './records/trial.ts';
@@ -17,7 +18,32 @@ export interface TrialRunRequest {
   harnessArgv: readonly string[];
   workspaceTemplateDir: string;
   secretRefs?: undefined;
+  evaluate?: EvaluationHook | undefined;
 }
+
+export interface RawEvaluatorOutcome {
+  evaluatorId: string;
+  /** null means the evaluator could not run and reports no verdict. */
+  passed: boolean | null;
+  subjective: boolean;
+}
+
+export interface TrialEvaluation {
+  outcomes: readonly RawEvaluatorOutcome[];
+  verificationExit?: number | null | undefined;
+}
+
+export interface TrialEvaluationContext {
+  workspaceRoot: string;
+  evaluatorIds: readonly string[];
+  toolEvents: ReadonlyArray<{ tool: string; ok: boolean }>;
+  before: WorkspaceSnapshot;
+  after: WorkspaceSnapshot;
+}
+
+export type EvaluationHook = (
+  context: TrialEvaluationContext,
+) => Promise<TrialEvaluation>;
 
 export interface TrialRunOutput {
   trialId: string;
@@ -30,6 +56,9 @@ export interface TrialRunOutput {
   missingEvidence: readonly string[];
   errorMessages: readonly string[];
   workspaceDiff: { filesChanged: number; insertions: number; deletions: number };
+  workspaceAfterDigest: string | null;
+  evaluatorOutcomes: readonly RawEvaluatorOutcome[];
+  verificationExit: number | null;
   cleanupComplete: boolean;
 }
 
@@ -119,6 +148,7 @@ export class TrialRunner {
 
       let events: ReturnType<typeof parseHarnessEvents>;
       let eventParseFailed = false;
+      const missingEvidenceNotes: string[] = [];
       try {
         events = parseHarnessEvents(outcome.stdout.toString('utf8'));
       } catch (cause) {
@@ -133,6 +163,32 @@ export class TrialRunner {
 
       const after = await this.workspacePort.snapshot(workspaceRoot);
       const workspaceDiff = this.workspacePort.diff(before, after);
+
+      let evaluation: TrialEvaluation = { outcomes: [] };
+      if (request.evaluate !== undefined) {
+        try {
+          evaluation = await request.evaluate({
+            workspaceRoot,
+            evaluatorIds: declaration.taskSuite.evaluatorIds,
+            toolEvents: events
+              .filter((event) => event.kind === 'tool' && event.tool !== undefined)
+              .map((event) => ({ tool: event.tool as string, ok: event.ok === true })),
+            before,
+            after,
+          });
+        } catch (cause) {
+          this.evidence.append({
+            atMs: at(),
+            kind: 'terminal',
+            detail: `evaluation hook failed: ${String(cause)}`,
+          });
+          evaluation = {
+            outcomes: [],
+            verificationExit: null,
+          };
+          missingEvidenceNotes.push('declared evaluators did not run: evaluation hook failed');
+        }
+      }
 
       const terminalState = classifyTerminalState({
         timedOut: outcome.timedOut,
@@ -155,6 +211,9 @@ export class TrialRunner {
                 ? `exceeded ${declaration.limits.wallMs}ms wall limit; process tree stopped`
                 : `harness exited with code ${String(outcome.exitCode)} in state ${terminalState}`,
             ];
+      if (eventParseFailed) {
+        missingEvidenceNotes.push('structured harness events were unparseable');
+      }
 
       return {
         trialId,
@@ -166,11 +225,12 @@ export class TrialRunner {
         toolEvents: events
           .filter((event) => event.kind === 'tool' && event.tool !== undefined)
           .map((event) => ({ tool: event.tool as string, ok: event.ok === true })),
-        missingEvidence: eventParseFailed
-          ? ['structured harness events were unparseable']
-          : [],
+        missingEvidence: missingEvidenceNotes,
         errorMessages,
         workspaceDiff,
+        workspaceAfterDigest: after.inputDigest,
+        evaluatorOutcomes: evaluation.outcomes,
+        verificationExit: evaluation.verificationExit ?? null,
         cleanupComplete,
       };
     } finally {
