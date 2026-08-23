@@ -20,22 +20,29 @@ design: it is blocked on external work in the Morpheus repository (rectification
 R1 and R2) plus cross-repo agreement on static golden exchange fixtures. Do not
 implement it before those land; it must never block Tonos qualification.
 
-### Current work: hardening / bug hunt
+### Current work: hardening pass executed (issue #23 closed)
 
-The next session's job is finding bugs in the new code. Known weak spots to
-start from (see issue #23 for the full backlog):
+The hardening/bug-hunt pass is **executed** (PRs #25–#30, issue #23 has the
+item-by-item record):
 
-- `tests/ts/providers.test.ts` equivalence scenario failed intermittently
-  under load twice ('' !== 'Hello', then 'cancelled'); transport retry and a
-  tail-buffer flush were added but the root cause was never confirmed.
-- The T2 runner emits its own `TrialRunOutput`; composing that into a codec-
-  valid canonical `TrialResult` document (with workspace digests and diff
-  summaries persisted) is not wired end-to-end yet.
-- Windows uses `taskkill /T /F` rather than true Job Objects; tree-kill
-  semantics are what the tests pin, not the mechanism.
-- Matrix execution (bounded concurrency, checkpoint/resume) exists only as
-  pure comparison logic in `core/comparison/engine.ts`; there is no runner
-  loop over a matrix declaration yet.
+- The flaky provider equivalence test was root-caused (asymmetric transport
+  retry: JSONL adapter had none) and fixed via shared
+  `adapters/providers/transport.ts`; a deterministic kill-first-connection
+  regression test pins it.
+- Runner output now composes into codec-valid canonical `TrialResult`
+  documents (`core/result-composition.ts`) with tamper-evident declaration
+  linkage, workspace-after digests, persisted diff summaries, and T5
+  evaluator wiring behind an EvaluationHook.
+- Windows tree-kill stays `taskkill /T /F`; the Job Object deviation and its
+  residual risks are documented in ARCHITECTURE §5.
+- Matrix execution has a design note before code
+  (`docs/MATRIX_RUNNER_DESIGN.md`): checkpoint state is a schedule index over
+  digest-verified artifacts, never evidence itself. **Implementation is open
+  work — likely the next session's main task.**
+- Operator cancellation exists on TrialRunner (graceful `cancelGraceMs` →
+  force; honest `'cancelled'` terminal states).
+- Secret-leak refusal under capture truncation is confirmed, pinned by tests,
+  and scoped in ARCHITECTURE §5; PS/TS legacy drift check came back clean.
 
 Read these files before changing product behavior:
 
