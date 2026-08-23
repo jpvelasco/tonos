@@ -109,6 +109,12 @@ artifacts/matrices/<matrixId>-<matrixDigest>/
   checkpoint entry. Any mismatch/absence demotes the unit to pending before
   dispatch. The comparison phase therefore always recomputes from artifacts,
   never from checkpoint claims.
+- **Unclaimed artifacts are never trusted:** an artifact sitting at a unit's
+  canonical path without a valid digest-bearing checkpoint claim is evidence
+  of nothing (it may be tampered bytes); the unit re-runs and atomically
+  replaces it. A crashed session loses nothing durable because every state
+  transition saves the last-good checkpoint atomically; only externally
+  corrupted metadata costs re-execution.
 - Consequence: corrupting the checkpoint cannot corrupt evidence — worst case
   it causes redundant re-runs; corrupting artifacts is detected by digest and
   demoted to re-run rather than trusted.
