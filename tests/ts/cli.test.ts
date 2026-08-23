@@ -1,12 +1,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, readFile, mkdir, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
+const DAY_MS = 86_400_000;
+
+async function seedArtifacts(root: string): Promise<void> {
+  const now = Date.now();
+  const dirs: Array<[string, number]> = [
+    ['cli-matrix-aaaaaaaaaaaa', now - 1 * DAY_MS],
+    ['cli-matrix-bbbbbbbbbbbb', now - 30 * DAY_MS],
+    ['other-cccccccccccc', now - 2 * DAY_MS],
+  ];
+  for (const [name, mtime] of dirs) {
+    await mkdir(join(root, name, 'results'), { recursive: true });
+    await writeFile(join(root, name, 'checkpoint.json'), '{"checkpointVersion":1}', 'utf8');
+    await utimes(join(root, name), new Date(mtime), new Date(mtime));
+  }
+  await writeFile(join(root, 'stray-file.txt'), 'keep me', 'utf8');
+}
 const CLI_ENTRY = new URL('../../cli/tonos.ts', import.meta.url).pathname.replace(
   /^\/([A-Za-z]:)/u,
   '$1',
@@ -160,5 +176,50 @@ test('qualify refuses an unfinished matrix with exit code 3', { timeout: 120_000
     assert.ok(failed);
   } finally {
     await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('matrix prune plans by default and deletes only on --apply', { timeout: 120_000 }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'tonos-cli-prune-'));
+  try {
+    await seedArtifacts(root);
+
+    const dry = await runCli([
+      'matrix', 'prune', '--artifacts', root,
+      '--keep-last', '1',
+    ]);
+    assert.match(dry.stdout, /would delete 1 matrix store directory/u);
+    assert.match(dry.stdout, /cli-matrix-bbbbbbbbbbbb/u);
+    assert.equal(await readFile(join(root, 'cli-matrix-bbbbbbbbbbbb', 'checkpoint.json'), 'utf8'), '{"checkpointVersion":1}', 'dry run must not delete');
+
+    const applied = await runCli([
+      'matrix', 'prune', '--artifacts', root,
+      '--keep-last', '1', '--apply',
+    ]);
+    assert.match(applied.stdout, /deleted 1 matrix store director/u);
+    await assert.rejects(readFile(join(root, 'cli-matrix-bbbbbbbbbbbb', 'checkpoint.json')));
+    await readFile(join(root, 'cli-matrix-aaaaaaaaaaaa', 'checkpoint.json'), 'utf8');
+    await readFile(join(root, 'other-cccccccccccc', 'checkpoint.json'), 'utf8');
+    await readFile(join(root, 'stray-file.txt'), 'utf8');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('matrix prune without a retention axis is a usage error', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'tonos-cli-prune-bad-'));
+  try {
+    let failed = false;
+    try {
+      await runCli(['matrix', 'prune', '--artifacts', root]);
+    } catch (error) {
+      failed = true;
+      const err = error as { code: number; stderr: string };
+      assert.equal(err.code, 1);
+      assert.match(err.stderr, /at least one retention axis|requires --keep-last or --older-than-days/u);
+    }
+    assert.ok(failed);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
