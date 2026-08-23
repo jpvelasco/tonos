@@ -19,6 +19,35 @@ export interface TrialRunRequest {
   workspaceTemplateDir: string;
   secretRefs?: undefined;
   evaluate?: EvaluationHook | undefined;
+  cancellation?: OperatorCancellation | undefined;
+}
+
+export interface OperatorCancellation {
+  requestCancel(): void;
+  onCancel(listener: () => void): void;
+  readonly requested: boolean;
+}
+
+export function createCancellation(): OperatorCancellation {
+  const listeners: Array<() => void> = [];
+  let fired = false;
+  return {
+    requestCancel(): void {
+      if (fired) return;
+      fired = true;
+      for (const listener of listeners.splice(0)) listener();
+    },
+    onCancel(listener: () => void): void {
+      if (fired) {
+        listener();
+        return;
+      }
+      listeners.push(listener);
+    },
+    get requested(): boolean {
+      return fired;
+    },
+  };
 }
 
 export interface RawEvaluatorOutcome {
@@ -132,6 +161,8 @@ export class TrialRunner {
           envAllowlist: childEnv,
           stdoutLimitBytes: 1_048_576,
           stderrLimitBytes: 65_536,
+          cancel: request.cancellation,
+          cancelGraceMs: declaration.limits.cancelGraceMs,
         },
         declaration.limits.wallMs,
       );
@@ -192,6 +223,7 @@ export class TrialRunner {
 
       const terminalState = classifyTerminalState({
         timedOut: outcome.timedOut,
+        cancelledByOperator: outcome.cancelledByOperator,
         exitCode: outcome.exitCode,
         eventParseFailed,
         eventCount: events.length,
@@ -209,7 +241,9 @@ export class TrialRunner {
           : [
               outcome.timedOut
                 ? `exceeded ${declaration.limits.wallMs}ms wall limit; process tree stopped`
-                : `harness exited with code ${String(outcome.exitCode)} in state ${terminalState}`,
+                : outcome.cancelledByOperator
+                  ? 'trial was cancelled by the operator before completion'
+                  : `harness exited with code ${String(outcome.exitCode)} in state ${terminalState}`,
             ];
       if (eventParseFailed) {
         missingEvidenceNotes.push('structured harness events were unparseable');
@@ -255,11 +289,13 @@ function allowlistedEnvironment(): Record<string, string> {
 
 export function classifyTerminalState(input: {
   timedOut: boolean;
+  cancelledByOperator?: boolean | undefined;
   exitCode: number | null;
   eventParseFailed: boolean;
   eventCount: number;
 }): TerminalState {
   if (input.timedOut) return 'timed-out';
+  if (input.cancelledByOperator) return 'cancelled';
   if (input.eventParseFailed) return 'invalid';
   if (input.exitCode === 0) {
     return input.eventCount > 0 ? 'passed' : 'invalid';

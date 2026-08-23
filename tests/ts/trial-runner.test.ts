@@ -10,6 +10,7 @@ import { InMemoryConfigurationPort } from '../fixtures/in-memory-config-port.ts'
 import { fixtureTrialDeclaration } from '../fixtures/records.ts';
 import {
   TrialRunner,
+  createCancellation,
 } from '../../core/trial-runner.ts';
 import { composeTrialResult } from '../../core/result-composition.ts';
 import { encode, decode } from '../../core/codec.ts';
@@ -347,6 +348,34 @@ test('captured output beyond the capture bound reaches no persisted record even 
     );
   }
   await rm(template, { recursive: true, force: true });
+});
+
+test('an explicit operator cancel yields honest cancelled evidence after graceful-then-force stop', { timeout: 20_000 }, async () => {
+  const template = await writeTemplate();
+  const runner = makeRunner();
+  const declaration = fixtureTrialDeclaration();
+  declaration.limits.wallMs = 15_000;
+  declaration.limits.cancelGraceMs = 50;
+  const cancellation = createCancellation();
+
+  setTimeout(() => cancellation.requestCancel(), 250);
+  const startedAt = Date.now();
+  const output = await runner.run({
+    declaration,
+    harnessArgv: [process.execPath, FIXTURE_HARNESS, 'spawn-grandchild'],
+    workspaceTemplateDir: template,
+    cancellation,
+  });
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.equal(output.terminalState, 'cancelled');
+  assert.equal(output.cleanupComplete, true);
+  assert.ok(
+    output.errorMessages.some((message) => message.includes('cancelled')),
+    'the cancelled result must say why it is not a passed trial',
+  );
+  assert.ok(elapsedMs < 5_000, `cancel must act within the grace window, took ${elapsedMs}ms`);
+  await assertGrandchildrenAreGone();
 });
 
 async function assertGrandchildrenAreGone(): Promise<void> {

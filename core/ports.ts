@@ -15,6 +15,13 @@ export interface SpawnRequest {
   envAllowlist: Readonly<Record<string, string>>;
   stdoutLimitBytes: number;
   stderrLimitBytes: number;
+  /** Present when the operator may cancel; the port stages graceful-then-force. */
+  cancel?: ProcessCancelSignal | undefined;
+  cancelGraceMs?: number | undefined;
+}
+
+export interface ProcessCancelSignal {
+  onCancel(listener: () => void): void;
 }
 
 export interface SpawnOutcome {
@@ -22,6 +29,7 @@ export interface SpawnOutcome {
   signal: string | null;
   timedOut: boolean;
   killedByTreeStop: boolean;
+  cancelledByOperator: boolean;
   wallMs: number;
   stdout: Buffer;
   stderr: Buffer;
