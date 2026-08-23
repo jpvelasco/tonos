@@ -9,9 +9,7 @@ class WindowsTreeStop implements ProcessPort {
   readonly platform = 'windows' as const;
 
   run(request: SpawnRequest, deadlineMs: number): Promise<SpawnOutcome> {
-    return runWithTreeKill(request, deadlineMs, (pid) =>
-      windowsTaskKillTree(pid),
-    );
+    return runWithTreeKill(request, deadlineMs, windowsTaskKillTree);
   }
 }
 
@@ -19,9 +17,7 @@ class PosixProcessGroupStop implements ProcessPort {
   readonly platform = 'posix' as const;
 
   run(request: SpawnRequest, deadlineMs: number): Promise<SpawnOutcome> {
-    return runWithTreeKill(request, deadlineMs, (pid) =>
-      posixKillProcessGroup(pid),
-    );
+    return runWithTreeKill(request, deadlineMs, posixKillProcessGroup);
   }
 }
 
@@ -29,10 +25,14 @@ export function createProcessPort(): ProcessPort {
   return platform() === 'win32' ? new WindowsTreeStop() : new PosixProcessGroupStop();
 }
 
+type StopMode = 'graceful' | 'force';
+
+type TreeStopper = (pid: number, mode: StopMode) => Promise<boolean>;
+
 async function runWithTreeKill(
   request: SpawnRequest,
   deadlineMs: number,
-  stopTree: (pid: number) => Promise<boolean>,
+  stopTree: TreeStopper,
 ): Promise<SpawnOutcome> {
   const started = Date.now();
   const child = spawn(request.argv[0] ?? '', request.argv.slice(1), {
@@ -45,10 +45,14 @@ async function runWithTreeKill(
 
   let killedByTreeStop = false;
   let timedOut = false;
+  let cancelledByOperator = false;
+  let stopStarted = false;
+  let settled = false;
   const stdoutChunks: Buffer[] = [];
   const stderrChunks: Buffer[] = [];
   let stdoutBytes = 0;
   let stderrBytes = 0;
+  const graceMs = Math.max(0, request.cancelGraceMs ?? 0);
 
   child.stdout?.on('data', (chunk: Buffer) => {
     if (stdoutBytes < request.stdoutLimitBytes) {
@@ -63,27 +67,46 @@ async function runWithTreeKill(
     }
   });
 
+  const forceStop = (): void => {
+    void stopTree(child.pid ?? 0, 'force').then((stopped) => {
+      killedByTreeStop ||= stopped;
+    });
+  };
+
+  const gracefulThenForce = (): void => {
+    if (stopStarted || settled) return;
+    stopStarted = true;
+    cancelledByOperator = true;
+    void stopTree(child.pid ?? 0, 'graceful').catch(() => false);
+    setTimeout(forceStop, graceMs);
+  };
+
   const timer = setTimeout(() => {
     timedOut = true;
-    void stopTree(child.pid ?? 0).then((stopped) => {
-      killedByTreeStop = stopped;
-    });
+    forceStop();
   }, deadlineMs);
+
+  if (request.cancel !== undefined) {
+    request.cancel.onCancel(gracefulThenForce);
+  }
 
   const outcome = await new Promise<SpawnOutcome>((resolve) => {
     const settle = (exitCode: number | null, signal: string | null) => {
+      if (settled) return;
+      settled = true;
       resolve({
         exitCode,
         signal,
         timedOut,
         killedByTreeStop,
+        cancelledByOperator,
         wallMs: Date.now() - started,
         stdout: Buffer.concat(stdoutChunks),
         stderr: Buffer.concat(stderrChunks),
       });
     };
     child.on('close', (code, signal) => {
-      if (!timedOut || killedByTreeStop || signal !== null) {
+      if (!timedOut && !cancelledByOperator) {
         settle(code, signal);
         return;
       }
@@ -98,21 +121,25 @@ async function runWithTreeKill(
   return outcome;
 }
 
-async function windowsTaskKillTree(pid: number): Promise<boolean> {
+async function windowsTaskKillTree(pid: number, mode: StopMode): Promise<boolean> {
   if (pid <= 0) return false;
-  const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+  const args =
+    mode === 'force'
+      ? ['/pid', String(pid), '/T', '/F']
+      : ['/pid', String(pid), '/T'];
+  const killer = spawn('taskkill', args, {
     windowsHide: true,
   });
   return new Promise((resolve) => {
-    killer.on('close', (code) => resolve(code === 0));
+    killer.on('close', (code) => resolve(mode === 'force' ? code === 0 : true));
     killer.on('error', () => resolve(false));
   });
 }
 
-async function posixKillProcessGroup(pid: number): Promise<boolean> {
+async function posixKillProcessGroup(pid: number, mode: StopMode): Promise<boolean> {
   if (pid <= 0) return false;
   try {
-    process.kill(-pid, 'SIGKILL');
+    process.kill(-pid, mode === 'force' ? 'SIGKILL' : 'SIGTERM');
     return true;
   } catch {
     return false;

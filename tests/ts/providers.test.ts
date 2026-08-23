@@ -258,7 +258,10 @@ test('a transient pre-response connection reset is retried transparently by both
       }),
     ]);
 
-    for (const server of [sse.server, jsonl.server]) server.close();
+    for (const server of [sse.server, jsonl.server]) {
+      server.close();
+      server.closeAllConnections();
+    }
 
     assert.equal(viaSse.observation.terminalReason, 'completed');
     assert.equal(viaSse.text, 'Hello');
