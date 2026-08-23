@@ -52,9 +52,16 @@ function main() {
   }
 
   if (mode === 'spawn-grandchild') {
+    // Forward an optional run marker so acceptance tests can identify THEIR
+    // own tree among all system processes.
+    const marker = process.argv.find((a) => a.startsWith('--marker='));
     const grandchild = spawn(
       process.execPath,
-      ['-e', 'setInterval(() => {}, 1000)'],
+      [
+        '-e',
+        'setInterval(() => {}, 1000)',
+        ...(marker !== undefined ? [marker] : []),
+      ],
       { stdio: 'ignore' },
     );
     grandchild.unref();
