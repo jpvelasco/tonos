@@ -1,10 +1,16 @@
 <#
 .SYNOPSIS
-    Compatibility entry point for the authoritative bench-rig benchmark.
+    LEGACY MACHINE-LAB OPERATION — compatibility entry point for the
+    authoritative bench-rig benchmark.
 .DESCRIPTION
-    Forwards all supported parameters to benchmark.ps1, which remains the single
-    source of truth for defaults and validation. The benchmark itself loads and
-    verifies the requested LM Studio configuration before measuring.
+    LEGACY MACHINE-LAB OPERATION: forwards all supported parameters to
+    benchmark.ps1, which unloads and loads LM Studio models. This mutates the
+    local inference engine and is not part of the provider-agnostic Tonos path.
+    Invoke deliberately.
+
+    benchmark.ps1 remains the single source of truth for defaults and
+    validation. The benchmark itself loads and verifies the requested LM Studio
+    configuration before measuring.
 #>
 
 #requires -Version 7.0

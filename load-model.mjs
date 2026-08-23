@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+//
+// LEGACY MACHINE-LAB OPERATION — loads a model into LM Studio through the SDK
+// client (client.llm.load). This mutates the local inference engine and is not
+// part of the provider-agnostic Tonos path. Invoke deliberately.
 
 import { pathToFileURL } from "node:url";
 import path from "node:path";

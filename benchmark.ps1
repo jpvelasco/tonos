@@ -1,12 +1,20 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-  Reproducible LM Studio benchmark for bench-rig.
+    LEGACY MACHINE-LAB OPERATION — bench-rig LM Studio benchmark.
+
 .DESCRIPTION
-  Loads and verifies a model, captures GPU/config metadata, then measures cold
-  prompt ingestion, exact-prefix reuse, prefix extension, reasoning decode,
-  visible-text decode, and an actual coding response. Every request is streamed
-  and hard-cancelled at TimeoutSec.
+    LEGACY MACHINE-LAB OPERATION: this script UNLOADS ALL LOADED LLMs, loads the
+    requested model with engine settings, and drives LM Studio lifecycle
+    endpoints (/api/v1/models/load, /api/v1/models/unload) plus the Node SDK
+    loader. It mutates the local inference engine and is not part of the
+    provider-agnostic Tonos path. Invoke deliberately.
+
+    Reproducible LM Studio benchmark for bench-rig. Loads and verifies a model,
+    captures GPU/config metadata, then measures cold prompt ingestion,
+    exact-prefix reuse, prefix extension, reasoning decode, visible-text decode,
+    and an actual coding response. Every request is streamed and hard-cancelled
+    at TimeoutSec.
 #>
 [CmdletBinding()]
 param(
@@ -41,19 +49,12 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . (Join-Path $PSScriptRoot 'harness-lib.ps1')
+. (Join-Path $PSScriptRoot 'measurement-lib.ps1')
 $script:ExplicitPhysicalBatch = $PSBoundParameters.ContainsKey('PhysicalBatchSize')
 $script:ApiRoot = $ApiRoot.TrimEnd('/')
 $script:OpenAiRoot = "$($script:ApiRoot)/v1"
 $script:Results = [System.Collections.Generic.List[object]]::new()
 $script:NativeResults = [System.Collections.Generic.List[object]]::new()
-
-function Get-Prop {
-    param([AllowNull()] $Object, [string] $Name, $Default = $null)
-    if ($null -eq $Object) { return $Default }
-    $property = $Object.PSObject.Properties[$Name]
-    if ($null -eq $property -or $null -eq $property.Value) { return $Default }
-    return $property.Value
-}
 
 function Get-LmModels {
     Invoke-RestMethod -Method Get -Uri "$($script:ApiRoot)/api/v1/models" -TimeoutSec 30
@@ -134,60 +135,14 @@ function Load-BenchmarkModel {
     }
 }
 
-function Assert-EffectiveConfig {
+function Assert-EffectiveBenchmarkConfig {
     param($Config)
-    $checks = [ordered]@{
-        context_length=$ContextLength; parallel=$Parallel; eval_batch_size=$EvalBatchSize
-        physical_batch_size=$PhysicalBatchSize; flash_attention=$true
-        offload_kv_cache_to_gpu=[bool]$KvCacheGpu; speculative_draft_mtp=[bool]$Mtp
+    $requested = [ordered]@{
+        context_length = $ContextLength; parallel = $Parallel; eval_batch_size = $EvalBatchSize
+        physical_batch_size = $PhysicalBatchSize; flash_attention = $true
+        offload_kv_cache_to_gpu = [bool]$KvCacheGpu; speculative_draft_mtp = [bool]$Mtp
     }
-    $mismatches = [System.Collections.Generic.List[string]]::new()
-    foreach ($entry in $checks.GetEnumerator()) {
-        $actual = Get-Prop $Config $entry.Key '__missing__'
-        if ("$actual" -ne "$($entry.Value)") { $mismatches.Add("$($entry.Key): requested=$($entry.Value), effective=${actual}") }
-    }
-    if ($mismatches.Count -gt 0) { throw "LM Studio did not apply requested config: $($mismatches -join '; ')" }
-    if ($KvCacheGpu -and $KvCacheQuantization -ne 'f16') {
-        $kvKeys = @('kv_cache_quantization', 'llama_k_cache_quantization_type', 'llama_v_cache_quantization_type')
-        $observed = @($kvKeys | ForEach-Object {
-            $value = Get-Prop $Config $_
-            if ($null -ne $value) { "${_}=${value}" }
-        })
-        $confirmed = $observed | Where-Object { ($_ -split '=', 2)[1] -ieq $KvCacheQuantization }
-        if ($observed.Count -gt 0 -and -not $confirmed) {
-            throw "KV cache quantization '${KvCacheQuantization}' was requested but effective config reports: $($observed -join ', ')."
-        }
-        if ($confirmed) {
-            $script:KvQuantizationVerified = $true
-        } else {
-            $script:KvQuantizationVerified = $false
-            Write-Warning "KV cache quantization '${KvCacheQuantization}' could not be verified: the server reports no quantization fields in its effective config. Recorded as unverified."
-        }
-    }
-}
-
-function New-OpenCodeLikePrompt {
-    param([int] $ApproxTokens, [string] $Nonce)
-    $targetChars = [int]($ApproxTokens * 2.4)
-    $builder = [Text.StringBuilder]::new($targetChars + 1000)
-    [void]$builder.AppendLine("CACHE-BUSTER: ${Nonce}")
-    [void]$builder.AppendLine('You are a coding agent. Inspect the repository, make minimal edits, run focused tests, and report exact evidence.')
-    $i = 0
-    while ($builder.Length -lt $targetChars) {
-        [void]$builder.AppendLine(('tool_{0:D5}: function(path_{0:D5}: string, line_{0:D5}: integer, pattern_{0:D5}: string): Promise<{{status: "ok"|"error"; output: string}}>;') -f $i)
-        $i++
-    }
-    [void]$builder.AppendLine('Task: inspect retry.go and identify one correctness risk. Answer in one sentence.')
-    $builder.ToString()
-}
-
-function Convert-Usage {
-    param($Usage)
-    $promptTokens = [int](Get-Prop $Usage 'prompt_tokens' 0)
-    $completionTokens = [int](Get-Prop $Usage 'completion_tokens' 0)
-    $details = Get-Prop $Usage 'completion_tokens_details'
-    $reasoningTokens = [int](Get-Prop $details 'reasoning_tokens' 0)
-    [pscustomobject]@{ prompt=$promptTokens; completion=$completionTokens; reasoning=$reasoningTokens; text=[Math]::Max(0,$completionTokens-$reasoningTokens) }
+    $script:KvQuantizationVerified = Assert-EffectiveConfig -Config $Config -Requested $requested -KvCacheGpu:$KvCacheGpu -KvCacheQuantization $KvCacheQuantization
 }
 
 function Invoke-NativeStreamingChat {
@@ -242,17 +197,17 @@ function Invoke-NativeStreamingChat {
         $request.Dispose(); $client.Dispose(); $handler.Dispose(); $cancel.Dispose()
     }
     if($null-eq$result-and$null-eq$failure){$failure='Native stream ended without a chat.end result.'}
-    $stats=Get-Prop $result 'stats'
-    $output=@(Get-Prop $result 'output' @())
-    $inputTokens=[int](Get-Prop $stats 'input_tokens' 0)
-    $totalOutput=[int](Get-Prop $stats 'total_output_tokens' 0)
-    $reasoningOutput=[int](Get-Prop $stats 'reasoning_output_tokens' 0)
+    $stats=Get-RecordProp $result 'stats'
+    $output=@(Get-RecordProp $result 'output' @())
+    $inputTokens=[int](Get-RecordProp $stats 'input_tokens' 0)
+    $totalOutput=[int](Get-RecordProp $stats 'total_output_tokens' 0)
+    $reasoningOutput=[int](Get-RecordProp $stats 'reasoning_output_tokens' 0)
     $record=[pscustomobject]@{
         phase=$Phase; reasoning_mode=$Reasoning; success=($null-eq$failure); timed_out=$timedOut; error=$failure
         input_tokens=$inputTokens; output_tokens=$totalOutput; reasoning_tokens=$reasoningOutput
         text_tokens=[Math]::Max(0,$totalOutput-$reasoningOutput)
-        ttft_sec=if($stats){[Math]::Round([double](Get-Prop $stats 'time_to_first_token_seconds' 0),4)}else{$null}
-        authoritative_output_tok_s=if($stats){[Math]::Round([double](Get-Prop $stats 'tokens_per_second' 0),2)}else{$null}
+        ttft_sec=if($stats){[Math]::Round([double](Get-RecordProp $stats 'time_to_first_token_seconds' 0),4)}else{$null}
+        authoritative_output_tok_s=if($stats){[Math]::Round([double](Get-RecordProp $stats 'tokens_per_second' 0),2)}else{$null}
         wall_sec=[Math]::Round($clock.Elapsed.TotalSeconds,4)
         visible_output=(@($output|Where-Object type -eq 'message').Count-gt0)
         reasoning=if($Capture){$reasoningText.ToString()}else{$null}
@@ -306,14 +261,14 @@ function Invoke-StreamingCompletion {
             $choice=$chunk.choices[0]
             if ($choice.finish_reason) { $finishReason=$choice.finish_reason }
             $delta=$choice.delta
-            $reasoningPart = [string](Get-Prop $delta 'reasoning_content' '')
+            $reasoningPart = [string](Get-RecordProp $delta 'reasoning_content' '')
             if ($reasoningPart.Length -gt 0) {
                 if ($null -eq $firstAnyMs) { $firstAnyMs=$nowMs }
                 if ($null -eq $firstReasoningMs) { $firstReasoningMs=$nowMs }
                 $lastReasoningMs=$nowMs
                 if ($Capture) { [void]$reasoning.Append($reasoningPart) }
             }
-            $textPart = [string](Get-Prop $delta 'content' '')
+            $textPart = [string](Get-RecordProp $delta 'content' '')
             if ($textPart.Length -gt 0) {
                 if ($null -eq $firstAnyMs) { $firstAnyMs=$nowMs }
                 if ($null -eq $firstTextMs) { $firstTextMs=$nowMs }
@@ -357,42 +312,13 @@ function Invoke-StreamingCompletion {
     $record
 }
 
-function Get-Median {
-    param([AllowEmptyCollection()][object[]] $Values)
-    $numbers=@($Values|Where-Object{$null-ne$_}|Sort-Object)
-    if($numbers.Count-eq0){return $null}
-    $mid=[int][Math]::Floor($numbers.Count/2)
-    if($numbers.Count%2){return [double]$numbers[$mid]}
-    ([double]$numbers[$mid-1]+[double]$numbers[$mid])/2.0
-}
-
-function Get-PhaseSummary {
-    param([string]$Phase)
-    $rows=@($script:Results|Where-Object phase -eq $Phase)
-    if($rows.Count-eq0){return $null}
-    [pscustomobject]@{
-        runs=$rows.Count; prompt_tokens_median=Get-Median @($rows.prompt_tokens); ttft_sec_median=Get-Median @($rows.ttft_sec)
-        estimated_prefill_median=Get-Median @($rows.estimated_prefill_tok_s); reasoning_tok_s_median=Get-Median @($rows.reasoning_tok_s)
-        text_tok_s_median=Get-Median @($rows.text_tok_s); decode_tok_s_median=Get-Median @($rows.decode_tok_s); wall_sec_median=Get-Median @($rows.wall_sec)
-    }
-}
-
 function Invoke-GoQualityTest {
     if(-not(Test-Path -LiteralPath $PromptFile -PathType Leaf)){throw "Coding prompt not found: ${PromptFile}"}
     $prompt=Get-Content -LiteralPath $PromptFile -Raw -Encoding utf8
     $result=Invoke-StreamingCompletion -Messages @(@{role='user';content=$prompt}) -Phase 'coding-quality' -TokenLimit $QualityMaxTokens -Capture
-    $quality=[ordered]@{visible_output=$result.visible_output;extraction='none';executable=$false;go_test_passed=$false;go_test_output=$null}
-    if(-not$result.visible_output){return [pscustomobject]$quality}
-    $match=[regex]::Match($result.text,'(?s)```go\s*(.*?)```')
-    if($match.Success){
-        $quality.extraction='go-tagged'
-    } else {
-        $match=[regex]::Match($result.text,'(?s)```\s*(.*?)```')
-        if(-not$match.Success){return [pscustomobject]$quality}
-        $quality.extraction='untagged-fallback'
-    }
-    $code=$match.Groups[1].Value
-    if($code-notmatch'(?m)^\s*package\s+retry\s*$'){return [pscustomobject]$quality}
+    $quality=Convert-QualityText -VisibleOutput $result.visible_output -Text $result.text
+    $code=$quality.code
+    if(-not$code){return [pscustomobject]$quality}
     $testRoot=Join-Path $env:TEMP "bench-rig-quality-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $testRoot -Force|Out-Null
     try{
@@ -424,15 +350,15 @@ try {
         $loaded=Wait-LoadedInstance -Key $Model -TimeoutSeconds 0
         if($null-eq$loaded){throw "Model '${Model}' is not loaded after load step."}
     }
-    Assert-EffectiveConfig -Config $loaded.config
+    Assert-EffectiveBenchmarkConfig -Config $loaded.config
     $lmsPs=Get-LmsPsSnapshot
     if($KvCacheGpu-and-not[bool]$loaded.config.offload_kv_cache_to_gpu){throw 'GPU KV cache requested but inactive; refusing CPU-spill benchmark.'}
 
     Write-Host 'Warming model and CUDA kernels...'
     Invoke-StreamingCompletion -Messages @(@{role='user';content='Return exactly: READY'}) -Phase 'warmup' -TokenLimit 16|Out-Null
     $gpuLoaded=Get-GpuSnapshot
-    $reasoningCapability=Get-Prop (Get-Prop $catalogRecord 'capabilities') 'reasoning'
-    $reasoningOptions=@(Get-Prop $reasoningCapability 'allowed_options' @())
+    $reasoningCapability=Get-RecordProp (Get-RecordProp $catalogRecord 'capabilities') 'reasoning'
+    $reasoningOptions=@(Get-RecordProp $reasoningCapability 'allowed_options' @())
     $decodePrompt='Generate a numbered list of 300 distinct, valid Go variable names. Do not explain, summarize, or stop early.'
     if($reasoningOptions -contains 'off'){
         Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-off' -Reasoning off -TokenLimit $MaxTokens|Out-Null
@@ -443,7 +369,7 @@ try {
     if($reasoningOptions.Count-eq0){
         Invoke-NativeStreamingChat -InputText $decodePrompt -Phase 'native-decode-auto' -Reasoning auto -TokenLimit $MaxTokens|Out-Null
     }
-    $promptTargets=switch($Suite){'Quick'{@(1000)}'OpenCode'{@($OpenCodePromptTokens)}'Full'{@(1000,8000,$OpenCodePromptTokens,32000)}}
+    $promptTargets=Get-PromptTargets -Suite $Suite -OpenCodePromptTokens $OpenCodePromptTokens
     foreach($target in $promptTargets){
         for($run=1;$run-le$Runs;$run++){
             $prompt=New-OpenCodeLikePrompt -ApproxTokens $target -Nonce ([guid]::NewGuid().ToString('N'))
@@ -465,18 +391,19 @@ try {
 }
 $phaseNames=@($script:Results | ForEach-Object phase | Where-Object{$_-ne'warmup'}|Sort-Object -Unique)
 $summaries=[ordered]@{}
-foreach($phase in $phaseNames){$summaries[$phase]=Get-PhaseSummary -Phase $phase}
+foreach($phase in $phaseNames){$summaries[$phase]=Get-PhaseSummary -Rows @($script:Results) -Phase $phase}
 $headroomPass=if($gpuAfter){$gpuAfter.memory_free_mib-ge1536}else{$false}
-$document=[ordered]@{
-    schema_version=3;timestamp=(Get-Date).ToString('o');label=$Label
-    model=[ordered]@{key=$catalogRecord.key;display_name=$catalogRecord.display_name;architecture=$catalogRecord.architecture;quantization=$catalogRecord.quantization;size_bytes=$catalogRecord.size_bytes;params_string=$catalogRecord.params_string;max_context_length=$catalogRecord.max_context_length}
-    benchmark=[ordered]@{suite=$Suite;runs=$Runs;max_tokens=$MaxTokens;timeout_sec=$TimeoutSec;open_code_prompt_target=$OpenCodePromptTokens;temperature=$Temperature;reasoning_effort=$ReasoningEffort}
-    requested_config=[ordered]@{context_length=$ContextLength;parallel=$Parallel;eval_batch_size=$EvalBatchSize;physical_batch_size=$PhysicalBatchSize;flash_attention=$true;offload_kv_cache_to_gpu=[bool]$KvCacheGpu;kv_cache_quantization=$KvCacheQuantization;num_experts=$NumExperts;speculative_draft_mtp=[bool]$Mtp;mtp_draft_tokens=$MtpDraftTokens}
-    effective_config=$(if($loaded){$loaded.config}else{$null});load_response=$loadResponse
-    gpu=[ordered]@{before_load=$gpuBefore;after_load=$gpuLoaded;after_benchmark=$gpuAfter;headroom_floor_mib=1536;headroom_pass=$headroomPass;kv_quantization_verified=$script:KvQuantizationVerified}
-    lms_ps=$lmsPs;summaries=$summaries;quality=$quality;native_per_run=$script:NativeResults;per_run=$script:Results
-    run_error=$script:RunError;incomplete=($null-ne$script:RunError)
-}
+$document=New-SchemaV3Document `
+    -Label $Label -Timestamp (Get-Date).ToString('o') -CatalogRecord $catalogRecord `
+    -Suite $Suite -Runs $Runs -MaxTokens $MaxTokens -TimeoutSec $TimeoutSec `
+    -OpenCodePromptTokens $OpenCodePromptTokens -Temperature $Temperature -ReasoningEffort $ReasoningEffort `
+    -ContextLength $ContextLength -Parallel $Parallel -EvalBatchSize $EvalBatchSize -PhysicalBatchSize $PhysicalBatchSize `
+    -KvCacheGpu:$KvCacheGpu -KvCacheQuantization $KvCacheQuantization -NumExperts $NumExperts -Mtp:$Mtp -MtpDraftTokens $MtpDraftTokens `
+    -EffectiveConfig $(if($loaded){$loaded.config}else{$null}) -LoadResponse $loadResponse `
+    -GpuBefore $gpuBefore -GpuAfterLoad $gpuLoaded -GpuAfterBenchmark $gpuAfter `
+    -HeadroomPass:$headroomPass -KvQuantizationVerified $script:KvQuantizationVerified `
+    -LmsPs $lmsPs -Summaries $summaries -Quality $quality `
+    -NativePerRun @($script:NativeResults) -PerRun @($script:Results) -RunError $script:RunError
 $timestamp=Get-Date -Format 'yyyyMMdd-HHmmssfff'
 $outputPath=Join-Path $OutDir "${timestamp}-${Label}.json"
 $document|ConvertTo-Json -Depth 16|Set-Content -LiteralPath $outputPath -Encoding utf8

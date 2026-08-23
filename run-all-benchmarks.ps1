@@ -1,7 +1,12 @@
 <#
 .SYNOPSIS
-    Run controlled bench-rig benchmarks with verified per-model settings.
+    LEGACY MACHINE-LAB OPERATION — run controlled bench-rig benchmarks with
+    verified per-model settings.
 .DESCRIPTION
+    LEGACY MACHINE-LAB OPERATION: every benchmark unloads and loads LM Studio
+    models through benchmark.ps1. This mutates the local inference engine and
+    is not part of the provider-agnostic Tonos path. Invoke deliberately.
+
     Uses benchmark.ps1 for loading, warming, streaming measurements, quality
     validation, GPU telemetry, and hard timeouts. Only one model is loaded at
     a time. The installed models deliberately use model-specific fit settings;
