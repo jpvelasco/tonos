@@ -75,6 +75,19 @@ function main() {
     process.exit(0);
   }
 
+  if (mode === 'echo-secret') {
+    const key = Object.keys(process.env).find((k) => k.startsWith('TONOS_SECRET_'));
+    if (key !== undefined) process.stdout.write(`${process.env[key]}\n`);
+    process.exit(0);
+  }
+
+  if (mode === 'leak-beyond-capture') {
+    process.stdout.write('x'.repeat(1_200_000) + '\n');
+    const key = Object.keys(process.env).find((k) => k.startsWith('TONOS_SECRET_'));
+    if (key !== undefined) process.stdout.write(`${process.env[key]}\n`);
+    process.exit(0);
+  }
+
   if (mode === 'crash') {
     process.exit(3);
   }

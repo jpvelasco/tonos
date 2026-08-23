@@ -302,6 +302,53 @@ test('an evaluation-hook crash keeps the trial as honest evidence without evalua
   await rm(template, { recursive: true, force: true });
 });
 
+test('a resolved secret echoed into captured output refuses the trial before persistence', async () => {
+  const template = await writeTemplate();
+  const runner = makeRunner();
+
+  await assert.rejects(
+    runner.run({
+      declaration: fixtureTrialDeclaration(),
+      harnessArgv: [process.execPath, FIXTURE_HARNESS, 'echo-secret'],
+      workspaceTemplateDir: template,
+    }),
+    /refusing to persist/u,
+  );
+
+  assert.ok(
+    secretsSeenByChild.every(
+      (value) => !evidence.events.some((event) => event.includes(value)),
+    ),
+    'the refusal itself must not leak the secret into evidence',
+  );
+  await rm(template, { recursive: true, force: true });
+});
+
+test('captured output beyond the capture bound reaches no persisted record even when a leak goes undetected there', async () => {
+  const template = await writeTemplate();
+  const runner = makeRunner();
+  const declaration = fixtureTrialDeclaration();
+
+  const output = await runner.run({
+    declaration,
+    harnessArgv: [process.execPath, FIXTURE_HARNESS, 'leak-beyond-capture'],
+    workspaceTemplateDir: template,
+  });
+
+  const persisted = JSON.stringify(output) + JSON.stringify(evidence.events);
+  for (const value of secretsSeenByChild) {
+    assert.ok(
+      !persisted.includes(value),
+      'no persisted record may contain the secret value',
+    );
+    assert.ok(
+      !persisted.includes(value.slice(0, 16)),
+      'not even a truncated prefix of the secret may persist',
+    );
+  }
+  await rm(template, { recursive: true, force: true });
+});
+
 async function assertGrandchildrenAreGone(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 300));
   if (process.platform === 'win32') {
