@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $failed = $false
 
-foreach ($path in Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File | Sort-Object Name) {
+foreach ($path in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'legacy\lmstudio') -Filter '*.ps1' -File | Sort-Object Name) {
     $file = $path.Name
     $tokens = $null
     $errors = $null
@@ -20,7 +20,7 @@ foreach ($path in Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File
 }
 
 if (Get-Command node -ErrorAction SilentlyContinue) {
-    & node --check (Join-Path $PSScriptRoot 'load-model.mjs')
+    & node --check (Join-Path $PSScriptRoot 'legacy\lmstudio\load-model.mjs')
     if ($LASTEXITCODE -eq 0) {
         Write-Host 'PASS load-model.mjs' -ForegroundColor Green
     } else {
@@ -32,3 +32,4 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
 }
 
 if ($failed) { exit 1 }
+

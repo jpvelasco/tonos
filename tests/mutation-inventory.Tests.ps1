@@ -6,7 +6,7 @@ $script:MjsLoader = 'load-model.mjs'
 
 function Get-ScriptText {
     param([Parameter(Mandatory)][string] $FileName)
-    Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\$FileName") -Raw
+    Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\legacy\lmstudio\$FileName") -Raw
 }
 
 function Get-LifecycleHits {
@@ -47,7 +47,7 @@ Assert-That 'Given the mutation inventory then wrapper scripts inherit benchmark
 }
 
 Assert-That 'Given the mutation inventory then analysis and smoke scripts never mutate LM Studio' -Expectation {
-    foreach ($innocent in @('test-load.ps1', 'compare-results.ps1', 'check-syntax.ps1', 'harness-lib.ps1', 'measurement-lib.ps1')) {
+    foreach ($innocent in @('test-load.ps1', 'compare-results.ps1', 'harness-lib.ps1', 'measurement-lib.ps1')) {
         Assert-True (@(Get-LifecycleHits -FileName $innocent).Count -eq 0) -Because "$innocent must stay request-only or offline"
     }
 }
@@ -63,4 +63,5 @@ foreach ($engineScript in @('benchmark.ps1', 'model-manager.ps1', 'bench.ps1', '
         Assert-True ($text -match 'LEGACY MACHINE-LAB OPERATION') -Because 'engine lifecycle control must be unmistakable before deliberate operator use'
     }
 }
+
 

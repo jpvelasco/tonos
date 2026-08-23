@@ -19,7 +19,7 @@ Read these files before changing product behavior:
 2. `docs/ARCHITECTURE.md` — target ports, records, data flow, and safety model;
 3. `docs/IMPLEMENTATION_PLAN.md` — T0-through-T8 agent work order and gates;
 4. `docs/INTEROPERABILITY.md` — optional, non-coupling Morpheus relationship;
-5. `CLAUDE.md` and `LEGACY_LM_STUDIO_HANDOFF.md` — historical LM Studio
+5. `legacy/lmstudio/CLAUDE.md` and `legacy/lmstudio/LEGACY_LM_STUDIO_HANDOFF.md` — historical LM Studio
    operating evidence only.
 
 The first implementation milestone is T0 characterization, followed by T1

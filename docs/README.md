@@ -17,11 +17,11 @@ Studio scripts alone.
 
 ## Historical Evidence
 
-- [LM Studio dojo guide](../CLAUDE.md) — current legacy script operation and the
+- [LM Studio dojo guide](../legacy/lmstudio/CLAUDE.md) — current legacy script operation and the
   bench-rig-specific benchmark workflow.
-- [bench-rig LM Studio handoff](../LEGACY_LM_STUDIO_HANDOFF.md) — retained
+- [bench-rig LM Studio handoff](../legacy/lmstudio/LEGACY_LM_STUDIO_HANDOFF.md) — retained
   qualification evidence and bounded winner decision.
-- [Historical model candidates](../MODEL-CANDIDATES.md) — machine-specific
+- [Historical model candidates](../legacy/lmstudio/MODEL-CANDIDATES.md) — machine-specific
   research input.
 
 Historical documents describe what the current scripts did. They do not
