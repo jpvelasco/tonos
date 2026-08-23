@@ -10,6 +10,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/ts/**/*.test.ts",
+    "cli": "tsx cli/tonos.ts",
     "emit-schemas": "tsx scripts/emit-schemas.ts",
     "emit-goldens": "tsx scripts/emit-goldens.ts",
     "verify-generated": "npm run -s emit-schemas && npm run -s emit-goldens && git -c core.autocrlf=false diff --exit-code -- schemas/ tests/fixtures/goldens/"

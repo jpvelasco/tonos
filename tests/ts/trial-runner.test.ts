@@ -111,16 +111,17 @@ test('timeout stops the whole process tree including grandchildren', { timeout: 
   const declaration = fixtureTrialDeclaration();
   declaration.limits.wallMs = 400;
   declaration.limits.cancelGraceMs = 50;
+  const runMarker = `--marker=tonos-${Math.random().toString(16).slice(2)}`;
 
   const output = await runner.run({
     declaration,
-    harnessArgv: [process.execPath, FIXTURE_HARNESS, 'spawn-grandchild'],
+    harnessArgv: [process.execPath, FIXTURE_HARNESS, 'spawn-grandchild', runMarker],
     workspaceTemplateDir: template,
   });
 
   assert.equal(output.terminalState, 'timed-out');
   assert.equal(output.cleanupComplete, true);
-  await assertGrandchildrenAreGone();
+  await assertGrandchildrenAreGone(runMarker);
 });
 
 test('credential canaries reach only the child environment and never captured output', async () => {
@@ -357,12 +358,13 @@ test('an explicit operator cancel yields honest cancelled evidence after gracefu
   declaration.limits.wallMs = 15_000;
   declaration.limits.cancelGraceMs = 50;
   const cancellation = createCancellation();
+  const runMarker = `--marker=tonos-${Math.random().toString(16).slice(2)}`;
 
   setTimeout(() => cancellation.requestCancel(), 250);
   const startedAt = Date.now();
   const output = await runner.run({
     declaration,
-    harnessArgv: [process.execPath, FIXTURE_HARNESS, 'spawn-grandchild'],
+    harnessArgv: [process.execPath, FIXTURE_HARNESS, 'spawn-grandchild', runMarker],
     workspaceTemplateDir: template,
     cancellation,
   });
@@ -375,10 +377,10 @@ test('an explicit operator cancel yields honest cancelled evidence after gracefu
     'the cancelled result must say why it is not a passed trial',
   );
   assert.ok(elapsedMs < 5_000, `cancel must act within the grace window, took ${elapsedMs}ms`);
-  await assertGrandchildrenAreGone();
+  await assertGrandchildrenAreGone(runMarker);
 });
 
-async function assertGrandchildrenAreGone(): Promise<void> {
+async function assertGrandchildrenAreGone(runMarker: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 300));
   if (process.platform === 'win32') {
     const { execFile } = await import('node:child_process');
@@ -396,9 +398,15 @@ async function assertGrandchildrenAreGone(): Promise<void> {
     } catch {
       return;
     }
-    assert.ok(
-      !stdout.includes('fixture-harness'),
-      'no fixture-harness process may survive the timeout',
+    // Only THIS run's tree matters: other test files may legitimately have
+    // their own fixture-harness processes in flight right now.
+    const survivors = stdout
+      .split(/\r?\n/u)
+      .filter((line) => line.includes('fixture-harness') && line.includes(runMarker));
+    assert.equal(
+      survivors.length,
+      0,
+      `no fixture-harness process of this run may survive the stop: ${survivors.join('; ')}`,
     );
     return;
   }
@@ -407,9 +415,13 @@ async function assertGrandchildrenAreGone(): Promise<void> {
   const run = promisify(execFile);
   try {
     const { stdout } = await run('ps', ['-eo', 'args']);
-    assert.ok(
-      !stdout.includes('fixture-harness'),
-      'no fixture-harness process may survive the timeout',
+    const survivors = stdout
+      .split(/\r?\n/u)
+      .filter((line) => line.includes('fixture-harness') && line.includes(runMarker));
+    assert.equal(
+      survivors.length,
+      0,
+      `no fixture-harness process of this run may survive the stop: ${survivors.join('; ')}`,
     );
   } catch {
     // ps unavailable; tree-kill correctness is covered by exit semantics
