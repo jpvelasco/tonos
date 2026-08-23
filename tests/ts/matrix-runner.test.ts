@@ -409,7 +409,10 @@ test('the filesystem store writes atomically, reads back, and rejects unsafe pat
     assert.equal(await fsStore.readText('results/x/rep-0.json'), '{"ok":false}');
 
     await assert.rejects(fsStore.writeAtomic('../escape.json', 'x'));
-    await assert.rejects(fsStore.writeAtomic('C:\\abs.json', 'x'));
+    const absolute = process.platform === 'win32'
+      ? 'C:\\abs.json'
+      : '/tmp/tonos-escape.json';
+    await assert.rejects(fsStore.writeAtomic(absolute, 'x'));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
