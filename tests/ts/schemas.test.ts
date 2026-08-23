@@ -11,12 +11,7 @@ test('published JSON Schemas match the runtime zod definitions exactly', async (
     const path = fileURLToPath(
       new URL(`../../schemas/${kind}.schema.json`, import.meta.url),
     );
-    let committed: string | undefined;
-    try {
-      committed = await readFile(path, 'utf8');
-    } catch {
-      committed = undefined;
-    }
+    const committed = (await readFile(path, 'utf8')).replace(/\r\n/gu, '\n');
     assert.ok(
       committed !== undefined,
       `schemas/${kind}.schema.json must be committed; run npm run emit-schemas`,
@@ -57,7 +52,7 @@ test('every record round-trips through its committed golden document', async () 
     const path = fileURLToPath(
       new URL(`../../tests/fixtures/goldens/${kind}.golden.json`, import.meta.url),
     );
-    const raw = await readFile(path, 'utf8');
+    const raw = (await readFile(path, 'utf8')).replace(/\r\n/gu, '\n');
     const decoded = decode<object>(kind, raw);
     assert.equal(encode(kind, decoded), raw.trim());
   }

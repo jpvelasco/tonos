@@ -12,7 +12,7 @@
     "test": "tsx --test tests/ts/**/*.test.ts",
     "emit-schemas": "tsx scripts/emit-schemas.ts",
     "emit-goldens": "tsx scripts/emit-goldens.ts",
-    "verify-generated": "npm run -s emit-schemas && npm run -s emit-goldens && git diff --exit-code -- schemas/ tests/fixtures/goldens/"
+    "verify-generated": "npm run -s emit-schemas && npm run -s emit-goldens && git -c core.autocrlf=false diff --exit-code -- schemas/ tests/fixtures/goldens/"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
