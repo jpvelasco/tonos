@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "declarationId": {
+      "type": "string",
+      "pattern": "^trn_trial_[0-9a-f]{64}$"
+    },
+    "observedHarnessVersion": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "observedProviderProfileId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "observedServedModelId": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "terminalState": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed",
+        "timed-out",
+        "cancelled",
+        "unsupported",
+        "invalid"
+      ]
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "finishedAt": {
+      "type": "string"
+    },
+    "phaseDurationsMs": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      }
+    },
+    "clientTiming": {
+      "type": "object",
+      "properties": {
+        "totalWallMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "ttftMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "totalWallMs"
+      ],
+      "additionalProperties": false
+    },
+    "attributedProviderTiming": {
+      "type": "object",
+      "properties": {
+        "sourceTag": {
+          "type": "string",
+          "const": "provider-reported"
+        },
+        "ttftSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "tokensPerSecond": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "sourceTag"
+      ],
+      "additionalProperties": false
+    },
+    "toolEvents": {
+      "maxItems": 4096,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "toolName": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "seq",
+          "toolName",
+          "ok"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "workspaceAfterDigest": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "diffSummary": {
+      "type": "object",
+      "properties": {
+        "filesChanged": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "insertions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "deletions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "filesChanged",
+        "insertions",
+        "deletions"
+      ],
+      "additionalProperties": false
+    },
+    "evaluatorOutcomes": {
+      "maxItems": 256,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "evaluatorId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "subjective": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "evaluatorId",
+          "passed",
+          "subjective"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "verificationExit": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "errorClass": {
+            "type": "string",
+            "enum": [
+              "harness-crash",
+              "timeout",
+              "parse",
+              "provider-error",
+              "verification-failed",
+              "unknown"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "errorClass",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "missingEvidence": {
+      "maxItems": 32,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 128
+      }
+    },
+    "redactionReport": {
+      "type": "object",
+      "properties": {
+        "removedCategories": {
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 64
+          }
+        }
+      },
+      "required": [
+        "removedCategories"
+      ],
+      "additionalProperties": false
+    },
+    "artifactDigests": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9/_.-]{0,127}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    }
+  },
+  "required": [
+    "declarationId",
+    "observedHarnessVersion",
+    "observedProviderProfileId",
+    "observedServedModelId",
+    "terminalState",
+    "startedAt",
+    "finishedAt",
+    "phaseDurationsMs",
+    "clientTiming",
+    "toolEvents",
+    "workspaceAfterDigest",
+    "evaluatorOutcomes",
+    "verificationExit",
+    "errors",
+    "missingEvidence",
+    "redactionReport",
+    "artifactDigests"
+  ],
+  "additionalProperties": false
+}

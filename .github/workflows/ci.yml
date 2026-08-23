@@ -25,3 +25,25 @@ jobs:
       - name: Legacy unit tests (BDD)
         shell: pwsh
         run: ./tests/run-tests.ps1
+
+  node-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Domain tests
+        run: npm test
+
+      - name: Generated schemas and goldens are in sync
+        run: npm run verify-generated

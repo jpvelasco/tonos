@@ -1,0 +1,1 @@
+{"contextLengthTokens":65536,"declaredUnknowns":[],"kind":"harnessConfiguration","maxOutputTokens":2048,"reasoningEffort":"none","requestedModelAlias":"test-model","retryPolicy":{"backoffMs":500,"maxAttempts":2},"schema_version":1,"timeoutMs":300000,"toolsEnabled":true}

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "suiteId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-~]{0,31}$"
+    },
+    "fixtureDigests": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9/_.-]{0,127}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "evaluatorIds": {
+      "maxItems": 32,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      }
+    },
+    "requiredCapabilities": {
+      "maxItems": 32,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      }
+    },
+    "retention": {
+      "type": "string",
+      "enum": [
+        "ephemeral",
+        "retained_local",
+        "exportable_sanitized",
+        "public_fixture"
+      ]
+    },
+    "workspacePolicy": {
+      "type": "object",
+      "properties": {
+        "allowedCommands": {
+          "maxItems": 32,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "networkAccess": {
+          "type": "boolean"
+        },
+        "maxFilesTouched": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "allowedCommands",
+        "networkAccess",
+        "maxFilesTouched"
+      ],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "perTrialWallMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 3600000
+        },
+        "maxConcurrentTrials": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      },
+      "required": [
+        "perTrialWallMs",
+        "maxConcurrentTrials"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "suiteId",
+    "revision",
+    "fixtureDigests",
+    "evaluatorIds",
+    "requiredCapabilities",
+    "retention",
+    "workspacePolicy",
+    "limits"
+  ],
+  "additionalProperties": false
+}

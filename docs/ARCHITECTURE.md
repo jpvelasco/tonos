@@ -245,8 +245,9 @@ See [INTEROPERABILITY.md](INTEROPERABILITY.md).
 
 ## 10. Target Repository Shape
 
-The implementation language is intentionally not fixed by this document. The
-target conceptual layout is:
+The implementation language is TypeScript on Node.js >= 22. Domain logic lives
+under `core/` with zero process, filesystem, network, or provider imports;
+adapters isolate the rest. The conceptual layout is:
 
 ```text
 core/                 identities, trials, matrices, evaluation, comparison
