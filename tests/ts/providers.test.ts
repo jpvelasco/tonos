@@ -11,13 +11,33 @@ import type { ExchangeOutcome } from '../../core/providers/types.ts';
 const CANARY = 'tonos-provider-canary';
 
 async function listen(server: Server): Promise<string> {
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const addr = server.address();
-  if (addr === null || typeof addr === 'object') {
-    return `http://127.0.0.1:${(addr as { port: number }).port}`;
+  // Windows dynamic port ranges can deal ports the fetch spec forbids
+  // ("bad port" refusals that no transport retry can overcome, because the
+  // rejection is tied to the origin itself). Probe every freshly bound
+  // origin with a real fetch and rebind until it is actually fetchable.
+  for (let attempt = 0; ; attempt++) {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const addr = server.address();
+    if (addr === null || typeof addr !== 'object') {
+      throw new Error('no address');
+    }
+    const url = `http://127.0.0.1:${addr.port}`;
+    if (attempt >= 8) return url;
+    // A forbidden port refuses instantly; a slow or deliberately silent
+    // fixture must not stall suite execution on this probe.
+    const refusal = await fetch(`${url}/`, { method: 'HEAD', signal: AbortSignal.timeout(500) }).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    let message = '';
+    if (refusal instanceof Error) {
+      const nested = refusal.cause as { message?: string } | undefined;
+      message = nested?.message ?? refusal.message;
+    }
+    if (message !== 'bad port') return url;
+    server.close();
   }
-  throw new Error('no address');
 }
 
 interface FixtureServer {
@@ -198,9 +218,8 @@ test('the same adapter serves loopback IPs and hostnames identically', async () 
   const sseB = sseServer();
   const urlA = await listen(sseA.server);
   // second server binds 0.0.0.0 too; address via localhost hostname
-  sseB.server.listen(0, '127.0.0.1');
-  await once(sseB.server, 'listening');
-  const portB = (sseB.server.address() as { port: number }).port;
+  const boundB = await listen(sseB.server);
+  const portB = new URL(boundB).port;
   const urlB = `http://localhost:${portB}`;
 
   const [a, b] = await Promise.all([
@@ -271,4 +290,72 @@ test('a transient pre-response connection reset is retried transparently by both
     assert.equal(viaJsonl.finishReason, 'stop');
   }
 });
+
+test('a fetch-forbidden origin is honest cancelled evidence, and listen() never deals such ports', async () => {
+  // Find a port Node's fetch refuses ("bad port") that we can still bind.
+  // Windows dynamic ranges starting below 65536 include spec-blocked ports;
+  // Linux ranges usually avoid them, in which case this pins nothing here.
+  let forbiddenPort: number | null = null;
+  for (const candidate of [123, 135, 137, 138, 139, 512, 513, 514, 5060, 6000]) {
+    const probe = createServer((_req, res) => res.end());
+    const bound = await new Promise<boolean>((resolve) => {
+      probe.once('error', () => resolve(false));
+      probe.listen(candidate, '127.0.0.1', () => resolve(true));
+    });
+    if (!bound) continue;
+    const refusal = await fetch(`http://127.0.0.1:${candidate}/`).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    if (refusal instanceof Error) {
+      const nested = refusal.cause as { message?: string } | undefined;
+      if (nested?.message === 'bad port' || refusal.message.includes('bad port')) {
+        forbiddenPort = candidate;
+        await new Promise<void>((resolve) => probe.close(() => resolve()));
+        break;
+      }
+    }
+    await new Promise<void>((resolve) => probe.close(() => resolve()));
+  }
+
+  if (forbiddenPort !== null) {
+    const sse = sseServer();
+    const url = await listenOn(sse.server, forbiddenPort);
+    const outcome = await runOpenAiCompatibleExchange({
+      baseUrl: `${url}/v1`,
+      modelAlias: 'm',
+      prompt: 'p',
+      maxOutputTokens: 4,
+      timeoutMs: 5_000,
+    });
+    await new Promise<void>((resolve) => sse.server.close(() => resolve()));
+    assert.equal(outcome.observation.terminalReason, 'cancelled');
+    assert.ok(
+      (outcome.errorDetail ?? '').includes('bad port'),
+      'the refusal cause must stay visible in bounded error evidence',
+    );
+  }
+
+  // The fix: listen() probes with a real fetch, so every returned origin is
+  // actually fetchable regardless of the machine's dynamic port range.
+  for (let i = 0; i < 25; i++) {
+    const server = createServer((_req, res) => res.end());
+    const url = await listen(server);
+    const accepted = await fetch(`${url}/`).then(
+      () => true,
+      (cause: unknown) =>
+        cause instanceof Error &&
+        ((cause.cause as { message?: string } | undefined)?.message ??
+          cause.message) === 'bad port',
+    );
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    assert.equal(accepted, true, `listen() returned a fetch-forbidden origin: ${url}`);
+  }
+});
+
+async function listenOn(server: Server, port: number): Promise<string> {
+  server.listen(port, '127.0.0.1');
+  await once(server, 'listening');
+  return `http://127.0.0.1:${port}`;
+}
 
