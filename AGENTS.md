@@ -31,16 +31,25 @@ The hardening pass (issue #23, PRs #25–#32) and the matrix execution loop
   instead of being trusted, operator cancellation that drains honestly,
   schedule-failure records with reason classes, and codec-valid
   `QualificationDecision` output through the unchanged T6 engine.
-- Entry points: `core/matrix/` (pure kernel + orchestration) and
-  `adapters/matrix/fs-matrix-store.ts`; design rationale in
-  `docs/MATRIX_RUNNER_DESIGN.md`.
-- There is no CLI entry yet; the runner is library-facing. Real-harness
-  adapters still start at the fixture contract (`core/harness/contract.ts`).
+- Entry points: `core/matrix/` (pure kernel + orchestration),
+  `adapters/matrix/fs-matrix-store.ts`, and the CLI
+  (`npm run cli -- matrix run|qualify ...`, exit codes documented in
+  `cli/tonos.ts`); design rationale in `docs/MATRIX_RUNNER_DESIGN.md`.
+- Only the `fixture` adapter kind is executable today. Real-harness
+  adapters start at the fixture contract (`core/harness/contract.ts`) and
+  need an issue-scoped plan before work begins.
 
-Candidate next tasks: a thin CLI for matrix run/resume/qualify; retention
-policy for matrix result directories; optional distinct terminal reason for
-mid-body transport deaths; first real-harness adapter behind an issue-scoped
-plan. T7 (#12) stays parked on external Morpheus work.
+Candidate next tasks, in priority order:
+
+1. Retention policy for matrix result directories (results currently
+   accumulate under the artifacts root with no pruning or size bounds).
+2. Optional distinct terminal reason for mid-body transport deaths in
+   provider exchanges (currently honest `'cancelled'`; see #25/#32 PR
+   discussions).
+3. First real-harness adapter — blocked on an issue-scoped plan per the
+   product boundary; do not start without one.
+
+T7 (#12) stays parked on external Morpheus work.
 
 Read these files before changing product behavior:
 
