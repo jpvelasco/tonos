@@ -1,17 +1,41 @@
 # AGENTS.md
 
-## Where We Left Off (2026-08-22)
+## Where We Left Off (2026-08-23)
 
-Tonos is being redefined as a **provider-agnostic AI harness qualification
-lab**. Its primary job is to compare developer harnesses such as Codex, Grok
-CLI, Zero, OpenClaude, and future adapters across reproducible task suites,
-harness configurations, served models, and provider endpoints.
+Tonos is a **provider-agnostic AI harness qualification lab**. It compares
+developer harnesses such as Codex, Grok CLI, Zero, OpenClaude, and future
+adapters across reproducible task suites, harness configurations, served
+models, and provider endpoints.
 
-The current PowerShell implementation at source `bd89450` is useful historical
-evidence but does not yet match that target. It combines a strong schema-v3
-request/quality benchmark with bench-rig-specific LM Studio model loading,
-engine settings, and NVIDIA telemetry. The LM Studio coupling is accidental.
-Future work must separate harness qualification from inference-runtime control.
+The refactor from the legacy LM Studio toolkit is **executed**: milestones
+T0–T6 and T8 landed as PRs #15–#22 (issues #5–#13 closed, epic #14 has the
+execution summary). The primary path is TypeScript under `core/`, `adapters/`,
+and `tasks/`; the entire engine-control toolkit is archived under
+`legacy/lmstudio/` with explicit LEGACY MACHINE-LAB banners. Ordinary use —
+fresh clone → `npm ci` → gates — requires no LM Studio, `lms`, `nvidia-smi`,
+GPU, Node model loader, or Morpheus.
+
+**The only open milestone is T7 interoperability (issue #12)**, deferred by
+design: it is blocked on external work in the Morpheus repository (rectifications
+R1 and R2) plus cross-repo agreement on static golden exchange fixtures. Do not
+implement it before those land; it must never block Tonos qualification.
+
+### Current work: hardening / bug hunt
+
+The next session's job is finding bugs in the new code. Known weak spots to
+start from (see issue #23 for the full backlog):
+
+- `tests/ts/providers.test.ts` equivalence scenario failed intermittently
+  under load twice ('' !== 'Hello', then 'cancelled'); transport retry and a
+  tail-buffer flush were added but the root cause was never confirmed.
+- The T2 runner emits its own `TrialRunOutput`; composing that into a codec-
+  valid canonical `TrialResult` document (with workspace digests and diff
+  summaries persisted) is not wired end-to-end yet.
+- Windows uses `taskkill /T /F` rather than true Job Objects; tree-kill
+  semantics are what the tests pin, not the mechanism.
+- Matrix execution (bounded concurrency, checkpoint/resume) exists only as
+  pure comparison logic in `core/comparison/engine.ts`; there is no runner
+  loop over a matrix declaration yet.
 
 Read these files before changing product behavior:
 
@@ -22,10 +46,9 @@ Read these files before changing product behavior:
 5. `legacy/lmstudio/CLAUDE.md` and `legacy/lmstudio/LEGACY_LM_STUDIO_HANDOFF.md` — historical LM Studio
    operating evidence only.
 
-The first implementation milestone is T0 characterization, followed by T1
-canonical identities and trial records. Do not begin multiple harness adapters
-before those records and the isolated runner are fixed. Do not implement the
-optional Morpheus exchange before the standalone Tonos path is complete.
+Do not begin multiple named-harness adapters without an issue-scoped plan;
+the fixture adapter contract (`core/harness/contract.ts`) is the gate every
+real adapter must pass first.
 
 ## Product Boundary
 
@@ -92,15 +115,25 @@ identity, ownership proof, or a required field.
 
 ## Current Validation
 
-The legacy implementation has these offline checks:
+Primary path (TypeScript, Node ≥ 22):
+
+```powershell
+npm ci
+npm run typecheck
+npm test
+npm run verify-generated   # emitted schemas/goldens must match the repo byte-for-byte
+```
+
+Legacy archive lane (required when touching `legacy/lmstudio/` or its tests):
 
 ```powershell
 .\check-syntax.ps1
 .\tests\run-tests.ps1
 ```
 
-They remain required for changes to existing scripts. New architecture work
-must add tests appropriate to its implementation language and the gate declared
-in `docs/IMPLEMENTATION_PLAN.md`. Live provider and real-harness lanes are
-opt-in and must identify every external service, workspace, configuration root,
-and allowed mutation before execution.
+CI runs all of these on every PR (windows pwsh gates; node gates on ubuntu +
+windows). Generated artifacts are LF-pinned via `.gitattributes` — never
+hand-edit `schemas/*.json` or `tests/fixtures/goldens/*.json`; rerun the
+emitters and commit the output. Live provider and real-harness lanes are
+opt-in and must identify every external service, workspace, configuration
+root, and allowed mutation before execution.
