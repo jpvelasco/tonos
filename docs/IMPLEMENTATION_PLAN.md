@@ -3,7 +3,7 @@
 Status: Active future implementation handoff; documentation work only is
 authorized as of 2026-08-22
 
-Audited predecessor source: `906145182cb93b21d7cce28fbd28a32d12813dde`
+Audited predecessor source: `bd894505be554632ad16aca3d06bbd503b94dddf`
 
 ## 1. Objective
 
