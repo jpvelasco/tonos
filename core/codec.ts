@@ -12,6 +12,9 @@ import {
   trialIdOf,
 } from './records/trial.ts';
 import { QualificationDecision, TrialMatrix } from './records/matrix.ts';
+import {
+  ProviderExchangeObservation,
+} from './records/exchange.ts';
 
 export const CURRENT_SCHEMA_VERSION = 1;
 
@@ -25,6 +28,7 @@ export const RECORD_KINDS = [
   'trialResult',
   'trialMatrix',
   'qualificationDecision',
+  'providerExchangeObservation',
 ] as const;
 export type RecordKind = (typeof RECORD_KINDS)[number];
 
@@ -52,6 +56,8 @@ const DOCUMENT_SCHEMAS: Record<RecordKind, AnySchema> = {
   trialResult: TrialResult as unknown as AnySchema,
   trialMatrix: TrialMatrix as unknown as AnySchema,
   qualificationDecision: QualificationDecision as unknown as AnySchema,
+  providerExchangeObservation:
+    ProviderExchangeObservation as unknown as AnySchema,
 };
 
 export function encode<T extends object>(kind: RecordKind, record: T): string {
