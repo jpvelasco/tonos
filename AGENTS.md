@@ -7,7 +7,7 @@ lab**. Its primary job is to compare developer harnesses such as Codex, Grok
 CLI, Zero, OpenClaude, and future adapters across reproducible task suites,
 harness configurations, served models, and provider endpoints.
 
-The current PowerShell implementation at source `9061451` is useful historical
+The current PowerShell implementation at source `bd89450` is useful historical
 evidence but does not yet match that target. It combines a strong schema-v3
 request/quality benchmark with bench-rig-specific LM Studio model loading,
 engine settings, and NVIDIA telemetry. The LM Studio coupling is accidental.
