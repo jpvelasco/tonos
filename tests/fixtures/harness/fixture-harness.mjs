@@ -11,10 +11,33 @@ function emit(event) {
   process.stdout.write(JSON.stringify({ tonos_event: event.type, ...event }) + '\n');
 }
 
+function emitRaw(line) {
+  process.stdout.write(line + '\n');
+}
+
 function main() {
+  const args = Object.fromEntries(
+    process.argv.slice(3)
+      .filter((a) => a.startsWith('--'))
+      .map((a) => {
+        const eq = a.indexOf('=');
+        return eq >= 0 ? [a.slice(2, eq), a.slice(eq + 1)] : [a.slice(2), true];
+      }),
+  );
+  const format = args['format'] ?? 'tonos';
+  const model = args['model'] ?? 'test-model';
+
   emit({ type: 'start', mode });
 
-  if (mode === 'tools') {
+  if (format === 'a') {
+    emitRaw(`[tool] name=read-file ok=true`);
+    emitRaw(`[tool] name=apply-diff ok=true`);
+    emitRaw(`[config] model=${model} ctx=4096`);
+  } else if (format === 'b') {
+    emitRaw(JSON.stringify({ evt: 'tool_call', name: 'read-file', status: 'ok' }));
+    emitRaw(JSON.stringify({ evt: 'tool_call', name: 'apply-diff', status: 'ok' }));
+    emitRaw(JSON.stringify({ evt: 'cfg', model_alias: model, ctx_tokens: 4096 }));
+  } else if (mode === 'tools') {
     emit({ type: 'tool', tool: 'read-file', ok: true });
     emit({ type: 'tool', tool: 'apply-diff', ok: true });
   }
