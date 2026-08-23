@@ -177,6 +177,21 @@ export const RECORD_FIXTURES: Record<RecordKind, () => object> = {
   trialResult: fixtureTrialResult,
   trialMatrix: fixtureTrialMatrix,
   qualificationDecision: fixtureQualificationDecision,
+  providerExchangeObservation: () => ({
+    profileId: 'local-fixture-endpoint',
+    protocolAdapterKind: 'json-line-fixture',
+    endpointHostDisplay: '127.0.0.1:0',
+    modelAlias: 'test-model',
+    terminalReason: 'completed' as const,
+    httpStatus: 200,
+    usage: { promptTokens: 12, completionTokens: 5, reasoningTokens: 2 },
+    clientTiming: { totalMs: 140, firstByteMs: 55 },
+    attributedProviderTiming: {
+      sourceTag: 'provider-reported' as const,
+      ttftSeconds: 0.05,
+      tokensPerSecond: 30,
+    },
+  }),
 };
 
 
