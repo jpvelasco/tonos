@@ -1,6 +1,15 @@
-# bench-rig — Local AI Desktop Dojo
+# bench-rig — Historical LM Studio Dojo
 
-**Purpose:** Test and tune local LLM models on the bench-rig box (RTX 4070 Ti Super, 16GB VRAM, 64GB RAM, Ryzen 7 2700X) via LM Studio. Find the best model/quant/settings combo for code review, architecture assessment, and general dev work.
+Status: Historical provider-specific operating guide. The accepted Tonos
+direction is the provider-agnostic harness qualification product described in
+[`docs/PRODUCT_SPECIFICATION.md`](docs/PRODUCT_SPECIFICATION.md). This file
+records the existing LM Studio workflow and must not be used to redefine the
+current product boundary.
+
+**Historical purpose:** Test and tune local LLM models on the bench-rig box
+(RTX 4070 Ti Super, 16GB VRAM, 64GB RAM, Ryzen 7 2700X) via LM Studio and find
+a useful model/configuration for code review, architecture assessment, and
+general development work.
 
 ## Hardware
 

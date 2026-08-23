@@ -1,4 +1,9 @@
-# bench-rig candidate queue
+# Historical bench-rig Candidate Queue
+
+Status: Provider- and machine-specific research input. These candidates are not
+a Tonos catalog, a universal ranking, or an active implementation queue. See
+[`docs/PRODUCT_SPECIFICATION.md`](docs/PRODUCT_SPECIFICATION.md) for the current
+provider-agnostic harness-qualification scope.
 
 Hardware constraint: RTX 4070 Ti Super with 16 GB VRAM, 64 GB system RAM, one loaded model, 65,536-token working context. A candidate is not accepted merely because its weights load. It must keep the KV cache on GPU, retain at least 1.5 GiB of VRAM headroom, expose visible output promptly, and pass the repository-backed coding test.
 
