@@ -16,9 +16,9 @@ export type { ToolTraceEvent, TracePolicy };
 
 export async function evaluateExecutableTests(
   workspaceDir: string,
-  timeoutMs: number,
+  timeoutMs: number = 60_000,
   options?: { cleanupEphemeral?: string[] },
-): Promise<EvaluatorOutcome & { detail?: string }> {
+): Promise<EvaluatorOutcome & { detail?: string; exitCode?: number | null }> {
   for (const ephemeral of options?.cleanupEphemeral ?? []) {
     try {
       await writeFile(join(workspaceDir, ephemeral), 'ephemeral\n', 'utf8');
@@ -29,7 +29,6 @@ export async function evaluateExecutableTests(
 
   let passed = false;
   let detail = '';
-  let ran = false;
 
   try {
     await execWithTimeout('go', ['version'], 10_000);
@@ -42,17 +41,17 @@ export async function evaluateExecutableTests(
       detail: 'go toolchain unavailable; executable evaluation not run',
     };
   }
-
-  ran = true;
+  let code: number | null = null;
   try {
-    const { code, output } = await execWithTimeout(
+    const result = await execWithTimeout(
       'go',
       ['test', '-count=1', './...'],
       timeoutMs,
       workspaceDir,
     );
+    code = result.code;
     passed = code === 0;
-    detail = output.slice(0, 2_000);
+    detail = result.output.slice(0, 2_000);
   } catch (cause) {
     passed = false;
     detail = String(cause).slice(0, 500);
@@ -66,7 +65,7 @@ export async function evaluateExecutableTests(
     evaluatorId: 'executable-tests',
     passed,
     subjective: false,
-    ...(ran ? {} : {}),
+    exitCode: code,
     ...(detail !== '' ? { detail } : {}),
   };
 }
