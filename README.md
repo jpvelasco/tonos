@@ -41,24 +41,26 @@ dependency of the other. See [Optional interoperability](docs/INTEROPERABILITY.m
 
 ## Current Legacy Toolkit
 
-The provider-agnostic domain layer (canonical records, codecs, and schemas)
-is being built in TypeScript under `core/`; run its gates with
-`npm run typecheck`, `npm test`, and `npm run verify-generated`.
+The provider-agnostic domain layer (canonical records, codecs, schemas,
+trial runner, harness and provider adapters, task suites, evaluators, and
+comparison) is TypeScript under `core/` and `adapters/`; ordinary use
+requires **no LM Studio, `lms`, `nvidia-smi`, GPU, Node model loader, or
+engine-control privilege**. Run its gates with `npm run typecheck`,
+`npm test`, and `npm run verify-generated`.
 
-The existing LM Studio path remains usable while the provider-agnostic path is
-built:
+The retired engine-control toolkit lives under
+[legacy/lmstudio/](legacy/lmstudio/). It remains deliberately invocable:
 
-- Run syntax checks: `.\check-syntax.ps1`
-- Run unit tests: `.\tests\run-tests.ps1`
-- Inspect LM Studio: `.\model-manager.ps1 -Action status`
-- Run the legacy benchmark: `.\benchmark.ps1 ...`
-- Compare local schema-v3 results: `.\compare-results.ps1`
+- Syntax checks (legacy scripts): `.\check-syntax.ps1`
+- Legacy unit tests: `.\tests\run-tests.ps1`
+- Inspect LM Studio: `.\legacy\lmstudio\model-manager.ps1 -Action status`
+- Run the legacy benchmark: `.\legacy\lmstudio\benchmark.ps1 ...`
 
 These commands can load or unload LM Studio models. They are explicit legacy
 machine-lab operations, not the target provider adapter contract. Read
-[CLAUDE.md](CLAUDE.md) and
-[LEGACY_LM_STUDIO_HANDOFF.md](LEGACY_LM_STUDIO_HANDOFF.md) before using
-them.
+[CLAUDE.md](legacy/lmstudio/CLAUDE.md) and
+[LEGACY_LM_STUDIO_HANDOFF.md](legacy/lmstudio/LEGACY_LM_STUDIO_HANDOFF.md)
+before using them.
 
 ## Documentation
 
@@ -67,8 +69,8 @@ them.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md)
 - [Optional Morpheus interoperability](docs/INTEROPERABILITY.md)
-- [Historical LM Studio operating guide](CLAUDE.md)
-- [Historical bench-rig evidence](LEGACY_LM_STUDIO_HANDOFF.md)
+- [Historical LM Studio operating guide](legacy/lmstudio/CLAUDE.md)
+- [Historical bench-rig evidence](legacy/lmstudio/LEGACY_LM_STUDIO_HANDOFF.md)
 
 Generated results remain ignored. Commit schemas, fixtures, tests, and concise
 sanitized decision records rather than prompts, model responses, credentials,

@@ -24,29 +24,60 @@ interface OpenAiChunk {
   };
 }
 
+function ssePayload(request: ExchangeRequest): string {
+  return JSON.stringify({
+    model: request.modelAlias,
+    messages: [{ role: 'user', content: request.prompt }],
+    max_tokens: request.maxOutputTokens,
+    stream: true,
+    stream_options: { include_usage: true },
+  });
+}
+
 export async function runOpenAiCompatibleExchange(
   request: ExchangeRequest & { profileId?: string },
 ): Promise<ExchangeOutcome> {
   const started = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
+  const url = `${request.baseUrl}/chat/completions`;
+  const init = (signal: AbortSignal) => ({
+    method: 'POST' as const,
+    signal,
+    headers: { 'content-type': 'application/json' },
+    body: ssePayload(request),
+  });
 
   try {
-    const response = await fetch(`${request.baseUrl}/chat/completions`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        model: request.modelAlias,
-        messages: [{ role: 'user', content: request.prompt }],
-        max_tokens: request.maxOutputTokens,
-        stream: true,
-        stream_options: { include_usage: true },
-      }),
-    });
+    const first = await fetch(url, init(controller.signal)).catch(
+      (transportCause: unknown) => transportCause,
+    );
+    let response: Response;
+    if (first instanceof Response) {
+      response = first;
+    } else {
+      // one transparent reconnect for pre-response transport failures
+      const second = await fetch(url, init(controller.signal)).catch(
+        () => undefined,
+      );
+      if (!(second instanceof Response)) {
+        clearTimeout(timer);
+        const cause =
+          first instanceof Error ? first : new Error('transport failed');
+        const timedOut =
+          cause.name === 'AbortError' || cause.name === 'TimeoutError';
+        return fail(request, started, {
+          terminalReason: timedOut ? 'timeout' : 'cancelled',
+          httpStatus: null,
+          errorDetail: String(cause).slice(0, 256),
+        });
+      }
+      response = second;
+    }
 
     if (!response.ok) {
       const bodyText = (await response.text()).slice(0, 256);
+      clearTimeout(timer);
       return fail(request, started, {
         terminalReason: 'http-error',
         httpStatus: response.status,
@@ -58,7 +89,7 @@ export async function runOpenAiCompatibleExchange(
     let finishReason: string | null = null;
     let firstByteMs: number | undefined;
     let usage = { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 };
-    let attributed: CanonicalObservation["attributedProviderTiming"];
+    let attributed: CanonicalObservation['attributedProviderTiming'];
 
     const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
     let buffered = '';
@@ -78,6 +109,7 @@ export async function runOpenAiCompatibleExchange(
         try {
           chunk = JSON.parse(payload) as OpenAiChunk;
         } catch {
+          clearTimeout(timer);
           return fail(request, started, {
             terminalReason: 'protocol-error',
             httpStatus: response.status,
@@ -112,10 +144,15 @@ export async function runOpenAiCompatibleExchange(
 
     clearTimeout(timer);
     return {
-      observation: buildObservation(request, 'openai-compatible', started, firstByteMs, usage, attributed, {
-        terminalReason: 'completed',
-        httpStatus: response.status,
-      }),
+      observation: buildObservation(
+        request,
+        'openai-compatible',
+        started,
+        firstByteMs,
+        usage,
+        attributed,
+        { terminalReason: 'completed', httpStatus: response.status },
+      ),
       text,
       finishReason,
     };
@@ -132,12 +169,14 @@ export async function runOpenAiCompatibleExchange(
   }
 }
 
-const fail = (
+function fail(
   request: ExchangeRequest & { profileId?: string },
   started: number,
-  partial: Parameters<typeof failedOutcome>[3],
-): ExchangeOutcome => failedOutcome(request, 'openai-compatible', started, partial);
-
-
-
-
+  partial: {
+    terminalReason: CanonicalObservation['terminalReason'];
+    httpStatus: number | null;
+    errorDetail?: string | undefined;
+  },
+): ExchangeOutcome {
+  return failedOutcome(request, 'openai-compatible', started, partial);
+}
