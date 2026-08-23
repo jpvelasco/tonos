@@ -7,11 +7,13 @@ import { decode, encode, CodecError } from '../core/codec.ts';
 import { TrialMatrix } from '../core/records/matrix.ts';
 import type { TrialMatrix as TrialMatrixType } from '../core/records/matrix.ts';
 import { matrixDigestOf } from '../core/matrix/units.ts';
+import { planMatrixRetention } from '../core/matrix/retention.ts';
 import {
   MatrixRunner,
   type MatrixStorePort,
 } from '../core/matrix/runner.ts';
 import { FileSystemMatrixStore } from '../adapters/matrix/fs-matrix-store.ts';
+import { FileSystemArtifactGc } from '../adapters/matrix/fs-artifact-gc.ts';
 import { FixtureTrialExecutor } from '../adapters/matrix/trial-executor.ts';
 import { createCancellation } from '../core/trial-runner.ts';
 
@@ -140,6 +142,54 @@ async function commandQualify(args: {
   }
 }
 
+async function commandPrune(args: {
+  artifacts: string;
+  keepLast?: number | undefined;
+  olderThanDays?: number | undefined;
+  apply: boolean;
+}): Promise<number> {
+  if (args.keepLast === undefined && args.olderThanDays === undefined) {
+    return fail(
+      EXIT_USAGE,
+      'matrix prune requires --keep-last or --older-than-days (refusing to plan without a retention axis)',
+    );
+  }
+  const gc = new FileSystemArtifactGc(args.artifacts);
+  const entries = await gc.listMatrixDirectories();
+  const plan = planMatrixRetention(
+    entries,
+    { keepLastPerMatrix: args.keepLast, olderThanDays: args.olderThanDays },
+    Date.now(),
+  );
+
+  for (const name of plan.unrecognized) {
+    process.stderr.write(`ignored (not a matrix store directory): ${name}\n`);
+  }
+  if (plan.delete.length === 0) {
+    process.stdout.write('nothing to prune\n');
+    return EXIT_OK;
+  }
+
+  if (!args.apply) {
+    process.stdout.write(
+      `would delete ${plan.delete.length} matrix store director${plan.delete.length === 1 ? 'y' : 'ies'} (dry run; pass --apply):\n`,
+    );
+    for (const name of plan.delete) {
+      process.stdout.write(`  - ${name}\n`);
+    }
+    return EXIT_OK;
+  }
+
+  for (const name of plan.delete) {
+    await gc.removeDirectory(name);
+    process.stdout.write(`deleted ${name}\n`);
+  }
+  process.stdout.write(
+    `deleted ${plan.delete.length} matrix store director${plan.delete.length === 1 ? 'y' : 'ies'}\n`,
+  );
+  return EXIT_OK;
+}
+
 const { positionals, values } = parseArgs({
   allowPositionals: true,
   options: {
@@ -147,14 +197,38 @@ const { positionals, values } = parseArgs({
     'workspace-template': { type: 'string' },
     'fixture-harness': { type: 'string' },
     'max-concurrent': { type: 'string' },
+    'keep-last': { type: 'string' },
+    'older-than-days': { type: 'string' },
+    apply: { type: 'boolean', default: false },
   },
 });
 
 const [group, command, matrixPath] = positionals;
+
+if (group === 'matrix' && command === 'prune') {
+  if (values.artifacts === undefined) {
+    fail(EXIT_USAGE, '--artifacts is required');
+  }
+  const exitCode = await commandPrune({
+    artifacts: values.artifacts,
+    keepLast:
+      values['keep-last'] !== undefined
+        ? Number(values['keep-last'])
+        : undefined,
+    olderThanDays:
+      values['older-than-days'] !== undefined
+        ? Number(values['older-than-days'])
+        : undefined,
+    apply: values.apply === true,
+  });
+  process.exit(exitCode);
+}
+
 if (group !== 'matrix' || command === undefined || matrixPath === undefined) {
   fail(
     EXIT_USAGE,
     'usage: tonos matrix <run|qualify> <matrix.json> --artifacts <dir> [--workspace-template <dir>] [--fixture-harness <path>] [--max-concurrent <n>]\n' +
+      '       tonos matrix prune --artifacts <dir> [--keep-last N] [--older-than-days D] [--apply]\n' +
       "resume is implicit: re-running against the same --artifacts dir adopts verified results and executes only what remains",
   );
 }

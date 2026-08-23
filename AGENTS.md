@@ -41,15 +41,17 @@ The hardening pass (issue #23, PRs #25–#32) and the matrix execution loop
 
 Candidate next tasks, in priority order:
 
-1. Retention policy for matrix result directories (results currently
-   accumulate under the artifacts root with no pruning or size bounds).
-2. Optional distinct terminal reason for mid-body transport deaths in
+1. Optional distinct terminal reason for mid-body transport deaths in
    provider exchanges (currently honest `'cancelled'`; see #25/#32 PR
    discussions).
-3. First real-harness adapter — blocked on an issue-scoped plan per the
+2. First real-harness adapter — blocked on an issue-scoped plan per the
    product boundary; do not start without one.
 
-T7 (#12) stays parked on external Morpheus work.
+Retention for matrix result directories is operator-driven via
+`npm run cli -- matrix prune --artifacts <dir> [--keep-last N]
+[--older-than-days D] [--apply]` (dry-run by default); suite-class-aware
+auto-pruning remains an open product decision, not a default. T7 (#12)
+stays parked on external Morpheus work.
 
 Read these files before changing product behavior:
 
