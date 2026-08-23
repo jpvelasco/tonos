@@ -1,4 +1,10 @@
-# Batmobile LM Studio — Findings and Next Steps
+# Batmobile LM Studio — Historical Findings and Handoff
+
+Status: Retained evidence for the provider-specific predecessor. It proves only
+the exact Batmobile, LM Studio, model, configuration, and task lanes recorded
+below. Current Tonos product direction lives in
+[`docs/PRODUCT_SPECIFICATION.md`](docs/PRODUCT_SPECIFICATION.md); this handoff
+does not authorize a provider-coupled architecture or a universal model claim.
 
 Date: 2026-07-03
 Machine: Windows 11, RTX 4070 Ti Super 16 GB, 64 GB RAM, Ryzen 7 2700X

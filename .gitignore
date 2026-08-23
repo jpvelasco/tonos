@@ -14,6 +14,7 @@ models/*.gguf
 models/.cache/
 # Generated benchmark and client artifacts
 benchmark-results/
+artifacts/
 results/
 .grok-config.toml.pending
 *.pid
