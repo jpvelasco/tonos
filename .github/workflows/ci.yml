@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell syntax checks
+        shell: pwsh
+        run: ./check-syntax.ps1
+
+      - name: Legacy unit tests (BDD)
+        shell: pwsh
+        run: ./tests/run-tests.ps1
