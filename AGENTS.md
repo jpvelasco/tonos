@@ -20,29 +20,27 @@ design: it is blocked on external work in the Morpheus repository (rectification
 R1 and R2) plus cross-repo agreement on static golden exchange fixtures. Do not
 implement it before those land; it must never block Tonos qualification.
 
-### Current work: hardening pass executed (issue #23 closed)
+### Current work: matrix execution loop implemented (PRs #33–#34)
 
-The hardening/bug-hunt pass is **executed** (PRs #25–#30, issue #23 has the
-item-by-item record):
+The hardening pass (issue #23, PRs #25–#32) and the matrix execution loop
+(#33 kernel, #34 runner) are **done**:
 
-- The flaky provider equivalence test was root-caused (asymmetric transport
-  retry: JSONL adapter had none) and fixed via shared
-  `adapters/providers/transport.ts`; a deterministic kill-first-connection
-  regression test pins it.
-- Runner output now composes into codec-valid canonical `TrialResult`
-  documents (`core/result-composition.ts`) with tamper-evident declaration
-  linkage, workspace-after digests, persisted diff summaries, and T5
-  evaluator wiring behind an EvaluationHook.
-- Windows tree-kill stays `taskkill /T /F`; the Job Object deviation and its
-  residual risks are documented in ARCHITECTURE §5.
-- Matrix execution has a design note before code
-  (`docs/MATRIX_RUNNER_DESIGN.md`): checkpoint state is a schedule index over
-  digest-verified artifacts, never evidence itself. **Implementation is open
-  work — likely the next session's main task.**
-- Operator cancellation exists on TrialRunner (graceful `cancelGraceMs` →
-  force; honest `'cancelled'` terminal states).
-- Secret-leak refusal under capture truncation is confirmed, pinned by tests,
-  and scoped in ARCHITECTURE §5; PS/TS legacy drift check came back clean.
+- The matrix loop runs a `TrialMatrix` with bounded concurrency (suite
+  minimum × operator cap), digest-verified checkpoint/resume where only
+  verified artifacts earn `done` state and unclaimed artifacts re-run
+  instead of being trusted, operator cancellation that drains honestly,
+  schedule-failure records with reason classes, and codec-valid
+  `QualificationDecision` output through the unchanged T6 engine.
+- Entry points: `core/matrix/` (pure kernel + orchestration) and
+  `adapters/matrix/fs-matrix-store.ts`; design rationale in
+  `docs/MATRIX_RUNNER_DESIGN.md`.
+- There is no CLI entry yet; the runner is library-facing. Real-harness
+  adapters still start at the fixture contract (`core/harness/contract.ts`).
+
+Candidate next tasks: a thin CLI for matrix run/resume/qualify; retention
+policy for matrix result directories; optional distinct terminal reason for
+mid-body transport deaths; first real-harness adapter behind an issue-scoped
+plan. T7 (#12) stays parked on external Morpheus work.
 
 Read these files before changing product behavior:
 
