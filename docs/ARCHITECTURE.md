@@ -173,7 +173,9 @@ Each trial receives:
 - a disposable task workspace;
 - an allowlisted environment with explicit proxy/network policy;
 - a new process group or Windows Job Object;
-- bounded stdout/stderr/event capture;
+- bounded stdout/stderr/event capture; the secret-leak refusal scans exactly
+  this bounded window, and content beyond the bound can enter no persisted
+  field because every persisted field is derived from within the window;
 - hard and cooperative cancellation deadlines;
 - cleanup verification for processes and files.
 
