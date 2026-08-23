@@ -2,7 +2,11 @@ import {
   buildObservation,
   failedOutcome,
 } from '../../core/providers/canonical.ts';
-import { connectWithOneRetry, isTimeoutCause } from './transport.ts';
+import {
+  connectWithOneRetry,
+  describeTransportCause,
+  isTimeoutCause,
+} from './transport.ts';
 import type {
   CanonicalObservation,
   ExchangeOutcome,
@@ -41,7 +45,7 @@ export async function runJsonLineFixtureExchange(
       return fail(request, started, {
         terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
         httpStatus: null,
-        errorDetail: String(cause).slice(0, 256),
+        errorDetail: describeTransportCause(cause),
       });
     }
     const response = connected.response;
@@ -119,7 +123,7 @@ export async function runJsonLineFixtureExchange(
     return fail(request, started, {
       terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
       httpStatus: null,
-      errorDetail: String(cause).slice(0, 256),
+      errorDetail: describeTransportCause(cause),
     });
   }
 }

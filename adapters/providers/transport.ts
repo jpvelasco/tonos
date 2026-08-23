@@ -30,3 +30,14 @@ export function isTimeoutCause(cause: unknown): boolean {
     (cause.name === 'AbortError' || cause.name === 'TimeoutError')
   );
 }
+
+/** Outer fetch failures wrap the real reason; surface both, bounded. */
+export function describeTransportCause(cause: unknown, max = 256): string {
+  const text = String(cause);
+  const nested = (cause as { cause?: { message?: string } | undefined })
+    ?.cause?.message;
+  const described = nested !== undefined && !text.includes(nested)
+    ? `${text} (${nested})`
+    : text;
+  return described.slice(0, max);
+}
