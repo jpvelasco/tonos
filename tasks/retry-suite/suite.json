@@ -1,0 +1,13 @@
+{
+  "suiteId": "go-retry",
+  "revision": "1.0.0",
+  "evaluatorIds": ["executable-tests", "tool-trace", "workspace-assertions"],
+  "requiredCapabilities": ["tools"],
+  "retention": "public_fixture",
+  "workspacePolicy": {
+    "allowedCommands": ["go test ./..."],
+    "networkAccess": false,
+    "maxFilesTouched": 10
+  },
+  "limits": { "perTrialWallMs": 120000, "maxConcurrentTrials": 4 }
+}
