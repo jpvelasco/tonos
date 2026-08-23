@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "harnessId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "adapterKind": {
+      "type": "string",
+      "enum": [
+        "codex",
+        "grok-cli",
+        "zero",
+        "openclaude",
+        "fixture"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-~]{0,31}$"
+    },
+    "adapterContractVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 127
+    },
+    "capabilities": {
+      "maxItems": 32,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]{0,63}$"
+      }
+    }
+  },
+  "required": [
+    "harnessId",
+    "adapterKind",
+    "version",
+    "adapterContractVersion",
+    "capabilities"
+  ],
+  "additionalProperties": false
+}

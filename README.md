@@ -41,6 +41,10 @@ dependency of the other. See [Optional interoperability](docs/INTEROPERABILITY.m
 
 ## Current Legacy Toolkit
 
+The provider-agnostic domain layer (canonical records, codecs, and schemas)
+is being built in TypeScript under `core/`; run its gates with
+`npm run typecheck`, `npm test`, and `npm run verify-generated`.
+
 The existing LM Studio path remains usable while the provider-agnostic path is
 built:
 

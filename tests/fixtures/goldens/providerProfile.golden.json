@@ -1,0 +1,1 @@
+{"capabilityObservations":["streaming","usage-reporting"],"endpointDisplay":"http://127.0.0.1:1234/v1","kind":"providerProfile","profileId":"local-fixture-endpoint","protocolAdapterKind":"fixture","schema_version":1,"secretRefs":["credman:fixture-key-ref"],"servedModelAlias":"test-model","transportPolicy":{"connectTimeoutMs":2000,"requestTimeoutMs":300000}}

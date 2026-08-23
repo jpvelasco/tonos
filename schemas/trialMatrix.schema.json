@@ -1,0 +1,498 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "matrixId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "policyRevision": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-~]{0,31}$"
+    },
+    "axes": {
+      "maxItems": 16,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "axis": {
+            "type": "string",
+            "enum": [
+              "harness",
+              "configuration",
+              "provider",
+              "served-model",
+              "task-suite"
+            ]
+          },
+          "variants": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          }
+        },
+        "required": [
+          "axis",
+          "variants"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "declarations": {
+      "maxItems": 1024,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "harness": {
+            "type": "object",
+            "properties": {
+              "harnessId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "adapterKind": {
+                "type": "string",
+                "enum": [
+                  "codex",
+                  "grok-cli",
+                  "zero",
+                  "openclaude",
+                  "fixture"
+                ]
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-~]{0,31}$"
+              },
+              "adapterContractVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 127
+              },
+              "capabilities": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                }
+              }
+            },
+            "required": [
+              "harnessId",
+              "adapterKind",
+              "version",
+              "adapterContractVersion",
+              "capabilities"
+            ],
+            "additionalProperties": false
+          },
+          "configuration": {
+            "type": "object",
+            "properties": {
+              "requestedModelAlias": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "reasoningEffort": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "none",
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "toolsEnabled": {
+                "type": "boolean"
+              },
+              "contextLengthTokens": {
+                "type": "integer",
+                "minimum": 1024,
+                "maximum": 10000000
+              },
+              "maxOutputTokens": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 1000000
+              },
+              "timeoutMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000
+              },
+              "retryPolicy": {
+                "type": "object",
+                "properties": {
+                  "maxAttempts": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "backoffMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60000
+                  }
+                },
+                "required": [
+                  "maxAttempts",
+                  "backoffMs"
+                ],
+                "additionalProperties": false
+              },
+              "promptTemplateDigest": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "effectiveBehavior": {
+                "type": "object",
+                "properties": {
+                  "modelReportedByHarness": {
+                    "type": "string",
+                    "maxLength": 128
+                  },
+                  "notes": {
+                    "maxItems": 16,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 256
+                    }
+                  }
+                },
+                "required": [
+                  "notes"
+                ],
+                "additionalProperties": false
+              },
+              "declaredUnknowns": {
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 128
+                }
+              }
+            },
+            "required": [
+              "requestedModelAlias",
+              "toolsEnabled",
+              "timeoutMs",
+              "retryPolicy",
+              "declaredUnknowns"
+            ],
+            "additionalProperties": false
+          },
+          "provider": {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "protocolAdapterKind": {
+                "type": "string",
+                "enum": [
+                  "openai-compatible",
+                  "anthropic-compatible",
+                  "fixture"
+                ]
+              },
+              "endpointDisplay": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "servedModelAlias": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "capabilityObservations": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 64
+                }
+              },
+              "secretRefs": {
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9:_.-]{0,63}$"
+                }
+              },
+              "transportPolicy": {
+                "type": "object",
+                "properties": {
+                  "connectTimeoutMs": {
+                    "type": "integer",
+                    "minimum": 100,
+                    "maximum": 120000
+                  },
+                  "requestTimeoutMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 3600000
+                  }
+                },
+                "required": [
+                  "connectTimeoutMs",
+                  "requestTimeoutMs"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "profileId",
+              "protocolAdapterKind",
+              "endpointDisplay",
+              "servedModelAlias",
+              "capabilityObservations",
+              "secretRefs",
+              "transportPolicy"
+            ],
+            "additionalProperties": false
+          },
+          "servedModel": {
+            "type": "object",
+            "properties": {
+              "providerProfileId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "providerReportedId": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "contextWindowTokens": {
+                "type": "integer",
+                "minimum": 512,
+                "maximum": 100000000
+              },
+              "capabilitiesObserved": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                }
+              },
+              "observedAt": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "provider-api",
+                  "operator-declared"
+                ]
+              }
+            },
+            "required": [
+              "providerProfileId",
+              "providerReportedId",
+              "capabilitiesObserved",
+              "observedAt",
+              "source"
+            ],
+            "additionalProperties": false
+          },
+          "taskSuite": {
+            "type": "object",
+            "properties": {
+              "suiteId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[0-9A-Za-z][0-9A-Za-z.+-~]{0,31}$"
+              },
+              "fixtureDigests": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9/_.-]{0,127}$"
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "evaluatorIds": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                }
+              },
+              "requiredCapabilities": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{0,63}$"
+                }
+              },
+              "retention": {
+                "type": "string",
+                "enum": [
+                  "ephemeral",
+                  "retained_local",
+                  "exportable_sanitized",
+                  "public_fixture"
+                ]
+              },
+              "workspacePolicy": {
+                "type": "object",
+                "properties": {
+                  "allowedCommands": {
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "networkAccess": {
+                    "type": "boolean"
+                  },
+                  "maxFilesTouched": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10000
+                  }
+                },
+                "required": [
+                  "allowedCommands",
+                  "networkAccess",
+                  "maxFilesTouched"
+                ],
+                "additionalProperties": false
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "perTrialWallMs": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 3600000
+                  },
+                  "maxConcurrentTrials": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64
+                  }
+                },
+                "required": [
+                  "perTrialWallMs",
+                  "maxConcurrentTrials"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "suiteId",
+              "revision",
+              "fixtureDigests",
+              "evaluatorIds",
+              "requiredCapabilities",
+              "retention",
+              "workspacePolicy",
+              "limits"
+            ],
+            "additionalProperties": false
+          },
+          "repetition": {
+            "type": "object",
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9999
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000
+              }
+            },
+            "required": [
+              "index",
+              "total"
+            ],
+            "additionalProperties": false
+          },
+          "environmentClass": {
+            "type": "string",
+            "enum": [
+              "local-machine",
+              "lan-host",
+              "remote-service"
+            ]
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "wallMs": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 3600000
+              },
+              "cancelGraceMs": {
+                "type": "integer",
+                "minimum": 50,
+                "maximum": 60000
+              }
+            },
+            "required": [
+              "wallMs",
+              "cancelGraceMs"
+            ],
+            "additionalProperties": false
+          },
+          "randomizationSeed": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "declaredAt": {
+            "type": "string"
+          },
+          "correlationValue": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "harness",
+          "configuration",
+          "provider",
+          "servedModel",
+          "taskSuite",
+          "repetition",
+          "environmentClass",
+          "limits"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "createdAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "matrixId",
+    "policyRevision",
+    "axes",
+    "declarations",
+    "createdAt"
+  ],
+  "additionalProperties": false
+}

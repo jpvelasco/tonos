@@ -12,6 +12,9 @@ results/*.log
 # Model binaries — too large for git, download via hf CLI
 models/*.gguf
 models/.cache/
+# Node
+node_modules/
+
 # Generated benchmark and client artifacts
 benchmark-results/
 artifacts/

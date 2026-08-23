@@ -63,6 +63,10 @@ without treating LM Studio lifecycle behavior as a target requirement.
 
 Entry: T0 characterization green.
 
+Implementation language: TypeScript on Node.js >= 22 (decided 2026-08-23;
+domain code stays free of process, filesystem, network, and provider
+imports).
+
 First failing tests:
 
 - deterministic codecs round-trip every record in the architecture;

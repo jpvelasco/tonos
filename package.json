@@ -1,0 +1,25 @@
+{
+  "name": "tonos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Provider-agnostic qualification lab for AI developer harnesses",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/ts/**/*.test.ts",
+    "emit-schemas": "tsx scripts/emit-schemas.ts",
+    "emit-goldens": "tsx scripts/emit-goldens.ts",
+    "verify-generated": "npm run -s emit-schemas && npm run -s emit-goldens && git -c core.autocrlf=false diff --exit-code -- schemas/ tests/fixtures/goldens/"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  }
+}
