@@ -1,0 +1,97 @@
+{
+  "schema_version": 3,
+  "timestamp": "1970-01-01T00:00:00.0000000+00:00",
+  "label": "golden-current-shape",
+  "model": {
+    "key": "test-model",
+    "display_name": "Test Model",
+    "architecture": "llama",
+    "quantization": "Q4_0",
+    "size_bytes": 8000000000,
+    "params_string": "8B",
+    "max_context_length": 131072
+  },
+  "benchmark": {
+    "suite": "OpenCode",
+    "runs": 3,
+    "max_tokens": 512,
+    "timeout_sec": 300,
+    "open_code_prompt_target": 12700,
+    "temperature": 0.2,
+    "reasoning_effort": "none"
+  },
+  "requested_config": {
+    "context_length": 65536,
+    "parallel": 1,
+    "eval_batch_size": 2048,
+    "physical_batch_size": 512,
+    "flash_attention": true,
+    "offload_kv_cache_to_gpu": true,
+    "kv_cache_quantization": "q8_0",
+    "num_experts": 8,
+    "speculative_draft_mtp": false,
+    "mtp_draft_tokens": 3
+  },
+  "effective_config": {
+    "context_length": 65536,
+    "parallel": 1,
+    "eval_batch_size": 2048,
+    "physical_batch_size": 512,
+    "flash_attention": true,
+    "offload_kv_cache_to_gpu": true
+  },
+  "load_response": {
+    "id": "test-instance"
+  },
+  "gpu": {
+    "before_load": {
+      "name": "Test GPU",
+      "memory_total_mib": 16384,
+      "memory_used_mib": 800,
+      "memory_free_mib": 15584,
+      "utilization_pct": 0,
+      "pstate": "P8",
+      "captured_at": "1970-01-01T00:00:00.0000000+00:00"
+    },
+    "after_load": {
+      "name": "Test GPU",
+      "memory_total_mib": 16384,
+      "memory_used_mib": 9500,
+      "memory_free_mib": 6884,
+      "utilization_pct": 0,
+      "pstate": "P2",
+      "captured_at": "1970-01-01T00:00:00.0000000+00:00"
+    },
+    "after_benchmark": {
+      "name": "Test GPU",
+      "memory_total_mib": 16384,
+      "memory_used_mib": 9600,
+      "memory_free_mib": 6784,
+      "utilization_pct": 97,
+      "pstate": "P2",
+      "captured_at": "1970-01-01T00:00:00.0000000+00:00"
+    },
+    "headroom_floor_mib": 1536,
+    "headroom_pass": true,
+    "kv_quantization_verified": false
+  },
+  "lms_ps": [
+    {
+      "type": "llm",
+      "modelKey": "test-model",
+      "status": "loaded"
+    }
+  ],
+  "summaries": {},
+  "quality": {
+    "visible_output": true,
+    "extraction": "none",
+    "executable": false,
+    "go_test_passed": false,
+    "go_test_output": null
+  },
+  "native_per_run": [],
+  "per_run": [],
+  "run_error": null,
+  "incomplete": false
+}

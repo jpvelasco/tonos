@@ -1,6 +1,13 @@
 <#
 .SYNOPSIS
-    Inspect or unload models on the bench-rig LM Studio server.
+    LEGACY MACHINE-LAB OPERATION — inspect or unload models on the bench-rig
+    LM Studio server.
+
+.DESCRIPTION
+    LEGACY MACHINE-LAB OPERATION: the 'unload' action unloads loaded LLM
+    instances through LM Studio lifecycle endpoints. This mutates the local
+    inference engine and is not part of the provider-agnostic Tonos path.
+    Invoke deliberately.
 #>
 
 [CmdletBinding()]

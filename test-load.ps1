@@ -1,6 +1,12 @@
 <#
 .SYNOPSIS
-    Run a short OpenAI-compatible smoke test against the currently loaded model.
+    LEGACY MACHINE-LAB OPERATION — run a short OpenAI-compatible smoke test
+    against the currently loaded model.
+
+.DESCRIPTION
+    LEGACY MACHINE-LAB OPERATION: request-only (it never loads or unloads), but
+    it belongs to the bench-rig legacy lane, not the provider-agnostic Tonos
+    path. Invoke deliberately.
 #>
 
 [CmdletBinding()]

@@ -16,8 +16,8 @@ function Assert-That {
 }
 
 function Assert-Equal {
-    param([Parameter(Mandatory)][AllowNull()] $Expected, [Parameter(Mandatory)][AllowNull()] $Actual)
-    if ("$Expected" -ne "$Actual") { throw "expected '$Expected' but got '$Actual'" }
+    param([Parameter(Mandatory)][AllowNull()] $Expected, [Parameter(Mandatory)][AllowNull()] $Actual, [string] $Because = 'values differ')
+    if ("$Expected" -ne "$Actual") { throw "expected '$Expected' but got '$Actual' ($Because)" }
 }
 
 function Assert-True {
@@ -26,8 +26,8 @@ function Assert-True {
 }
 
 function Assert-Null {
-    param([AllowNull()] $Actual)
-    if ($null -ne $Actual) { throw "expected null but got '$Actual'" }
+    param([AllowNull()] $Actual, [string] $Because = 'expected null')
+    if ($null -ne $Actual) { throw "$Because but got '$Actual'" }
 }
 
 function Assert-Throws {
