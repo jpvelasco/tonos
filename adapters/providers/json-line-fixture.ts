@@ -2,6 +2,7 @@ import {
   buildObservation,
   failedOutcome,
 } from '../../core/providers/canonical.ts';
+import { connectWithOneRetry, isTimeoutCause } from './transport.ts';
 import type {
   CanonicalObservation,
   ExchangeOutcome,
@@ -28,12 +29,22 @@ export async function runJsonLineFixtureExchange(
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
 
   try {
-    const response = await fetch(`${request.baseUrl}/chat`, {
+    const connected = await connectWithOneRetry(`${request.baseUrl}/chat`, {
       method: 'POST',
       signal: controller.signal,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: request.modelAlias, say: request.prompt, cap: request.maxOutputTokens }),
     });
+    if (connected.response === undefined) {
+      clearTimeout(timer);
+      const cause = connected.cause;
+      return fail(request, started, {
+        terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
+        httpStatus: null,
+        errorDetail: String(cause).slice(0, 256),
+      });
+    }
+    const response = connected.response;
 
     if (!response.ok) {
       return fail(request, started, {
@@ -105,11 +116,8 @@ export async function runJsonLineFixtureExchange(
     };
   } catch (cause) {
     clearTimeout(timer);
-    const timedOut =
-      cause instanceof Error &&
-      (cause.name === 'AbortError' || cause.name === 'TimeoutError');
     return fail(request, started, {
-      terminalReason: timedOut ? 'timeout' : 'cancelled',
+      terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
       httpStatus: null,
       errorDetail: String(cause).slice(0, 256),
     });

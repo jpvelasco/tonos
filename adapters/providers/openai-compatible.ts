@@ -2,6 +2,7 @@ import {
   buildObservation,
   failedOutcome,
 } from '../../core/providers/canonical.ts';
+import { connectWithOneRetry, isTimeoutCause } from './transport.ts';
 import type {
   CanonicalObservation,
   ExchangeOutcome,
@@ -49,31 +50,17 @@ export async function runOpenAiCompatibleExchange(
   });
 
   try {
-    const first = await fetch(url, init(controller.signal)).catch(
-      (transportCause: unknown) => transportCause,
-    );
-    let response: Response;
-    if (first instanceof Response) {
-      response = first;
-    } else {
-      // one transparent reconnect for pre-response transport failures
-      const second = await fetch(url, init(controller.signal)).catch(
-        () => undefined,
-      );
-      if (!(second instanceof Response)) {
-        clearTimeout(timer);
-        const cause =
-          first instanceof Error ? first : new Error('transport failed');
-        const timedOut =
-          cause.name === 'AbortError' || cause.name === 'TimeoutError';
-        return fail(request, started, {
-          terminalReason: timedOut ? 'timeout' : 'cancelled',
-          httpStatus: null,
-          errorDetail: String(cause).slice(0, 256),
-        });
-      }
-      response = second;
+    const connected = await connectWithOneRetry(url, init(controller.signal));
+    if (connected.response === undefined) {
+      clearTimeout(timer);
+      const cause = connected.cause;
+      return fail(request, started, {
+        terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
+        httpStatus: null,
+        errorDetail: String(cause).slice(0, 256),
+      });
     }
+    const response = connected.response;
 
     if (!response.ok) {
       const bodyText = (await response.text()).slice(0, 256);
@@ -158,11 +145,8 @@ export async function runOpenAiCompatibleExchange(
     };
   } catch (cause) {
     clearTimeout(timer);
-    const timedOut =
-      cause instanceof Error &&
-      (cause.name === 'AbortError' || cause.name === 'TimeoutError');
     return fail(request, started, {
-      terminalReason: timedOut ? 'timeout' : 'cancelled',
+      terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
       httpStatus: null,
       errorDetail: String(cause).slice(0, 256),
     });
