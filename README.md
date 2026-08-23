@@ -1,4 +1,4 @@
-# bench-rig Tuner
+# Tonos
 
 Local LM Studio benchmark and qualification tools for the bench-rig RTX 4070 Ti Super workstation.
 

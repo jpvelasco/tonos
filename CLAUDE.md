@@ -13,7 +13,7 @@
 
 ## Evaluated Models (16 GB VRAM)
 
-**External baseline (bench-rig box `192.0.2.10`):** `qwen36-27b-nvfp4` remains the primary coder outside this machine. Its NVIDIA FP4 quant is optimized for Blackwell and is not a local Ada Lovelace candidate.
+**External baseline (`192.0.2.10`):** `qwen36-27b-nvfp4` remains the primary coder outside this machine. Its NVIDIA FP4 quant is optimized for Blackwell and is not a local Ada Lovelace candidate.
 
 **bench-rig (`127.0.0.1`, RTX 4070 Ti Super):**
 
