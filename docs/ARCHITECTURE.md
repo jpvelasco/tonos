@@ -172,7 +172,16 @@ Each trial receives:
 - a disposable harness home/configuration directory;
 - a disposable task workspace;
 - an allowlisted environment with explicit proxy/network policy;
-- a new process group or Windows Job Object;
+- a stoppable process tree: POSIX process groups (detached spawn plus
+  `kill(-pid)`), and on Windows a `taskkill /T /F` tree stop rather than a
+  Windows Job Object. This is a documented deviation from the original plan:
+  Job Objects require a native binding, while the fixture-proven `taskkill`
+  path already provides the grandchild-inclusive stops the acceptance tests
+  pin. Residual risks are a millisecond-scale PID-reuse window between
+  deadline and stop, and non-atomic membership for processes spawned during
+  the stop itself. Both are acceptable for trial-class workloads; the
+  deviation is re-opened if operator cancellation or fleet operation demands
+  kernel-enforced containment.
 - bounded stdout/stderr/event capture; the secret-leak refusal scans exactly
   this bounded window, and content beyond the bound can enter no persisted
   field because every persisted field is derived from within the window;
