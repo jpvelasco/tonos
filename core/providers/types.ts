@@ -1,3 +1,4 @@
+import type { TerminalReason } from '../records/exchange.ts';
 import type { ProviderProfile } from '../records/provider.ts';
 
 export interface CanonicalObservation {
@@ -25,12 +26,7 @@ export interface CanonicalObservation {
     | undefined;
 }
 
-export type TerminalReason =
-  | 'completed'
-  | 'cancelled'
-  | 'timeout'
-  | 'http-error'
-  | 'protocol-error';
+export type { TerminalReason };
 
 export interface ExchangeRequest {
   baseUrl: string;

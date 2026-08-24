@@ -32,6 +32,7 @@ export async function runJsonLineFixtureExchange(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
 
+  let responseStatus: number | null = null;
   try {
     const connected = await connectWithOneRetry(`${request.baseUrl}/chat`, {
       method: 'POST',
@@ -57,9 +58,11 @@ export async function runJsonLineFixtureExchange(
         errorDetail: (await response.text()).slice(0, 256),
       });
     }
+    responseStatus = response.status;
 
     let text = '';
     let finishReason: string | null = null;
+    let sawFinal = false;
     let firstByteMs: number | undefined;
     let usage = { promptTokens: 0, completionTokens: 0, reasoningTokens: 0 };
     let attributed: CanonicalObservation['attributedProviderTiming'];
@@ -88,6 +91,7 @@ export async function runJsonLineFixtureExchange(
         }
         if (frame.kind === 'piece') text += frame.text ?? '';
         if (frame.kind === 'final') {
+          sawFinal = true;
           finishReason = frame.finish ?? null;
           usage = {
             promptTokens: frame.counted?.in ?? 0,
@@ -109,6 +113,17 @@ export async function runJsonLineFixtureExchange(
       }
     }
 
+    if (!sawFinal) {
+      // The stream ended without the provider's terminal frame: whether the
+      // socket died or closed short, the exchange did not complete.
+      clearTimeout(timer);
+      return fail(request, started, {
+        terminalReason: 'disconnected',
+        httpStatus: response.status,
+        errorDetail: 'stream ended before the final frame arrived',
+      });
+    }
+
     clearTimeout(timer);
     return {
       observation: buildObservation(request, 'json-line-fixture', started, firstByteMs, usage, attributed, {
@@ -120,9 +135,16 @@ export async function runJsonLineFixtureExchange(
     };
   } catch (cause) {
     clearTimeout(timer);
+    if (responseStatus !== null && !isTimeoutCause(cause)) {
+      return fail(request, started, {
+        terminalReason: 'disconnected',
+        httpStatus: responseStatus,
+        errorDetail: describeTransportCause(cause),
+      });
+    }
     return fail(request, started, {
       terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
-      httpStatus: null,
+      httpStatus: responseStatus,
       errorDetail: describeTransportCause(cause),
     });
   }
