@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## Where We Left Off (2026-08-23)
+## Where We Left Off (2026-08-24)
 
 Tonos is a **provider-agnostic AI harness qualification lab**. It compares
 developer harnesses such as Codex, Grok CLI, Zero, OpenClaude, and future
@@ -20,36 +20,30 @@ design: it is blocked on external work in the Morpheus repository (rectification
 R1 and R2) plus cross-repo agreement on static golden exchange fixtures. Do not
 implement it before those land; it must never block Tonos qualification.
 
-### Current work: matrix execution loop implemented (PRs #33–#34)
+### Current work: Codex adapter in progress (issue #40, M1 landed via #41)
 
-The hardening pass (issue #23, PRs #25–#32) and the matrix execution loop
-(#33 kernel, #34 runner) are **done**:
-
-- The matrix loop runs a `TrialMatrix` with bounded concurrency (suite
-  minimum × operator cap), digest-verified checkpoint/resume where only
-  verified artifacts earn `done` state and unclaimed artifacts re-run
-  instead of being trusted, operator cancellation that drains honestly,
-  schedule-failure records with reason classes, and codec-valid
-  `QualificationDecision` output through the unchanged T6 engine.
-- Entry points: `core/matrix/` (pure kernel + orchestration),
-  `adapters/matrix/fs-matrix-store.ts`, and the CLI
-  (`npm run cli -- matrix run|qualify ...`, exit codes documented in
-  `cli/tonos.ts`); design rationale in `docs/MATRIX_RUNNER_DESIGN.md`.
-- Only the `fixture` adapter kind is executable today. Real-harness
-  adapters start at the fixture contract (`core/harness/contract.ts`) and
-  need an issue-scoped plan before work begins.
-
-Candidate next tasks, in priority order:
-
-1. First real-harness adapter — blocked on an issue-scoped plan per the
-   product boundary; do not start without one.
-
-Mid-body transport deaths now report terminalReason `'disconnected'`
-(distinct from `'cancelled'`); retention is operator-driven via
+Done and stable: hardening pass (#23), matrix execution loop with CLI
+(#33–#36), operator-driven retention via `matrix prune` (#38), and
+terminalReason `'disconnected'` for mid-body transport deaths (#39). Entry
+points: `core/matrix/`, `adapters/matrix/`, `cli/tonos.ts` (exit codes
+documented in-file), design rationale in `docs/MATRIX_RUNNER_DESIGN.md`.
+Prune old result directories with
 `npm run cli -- matrix prune --artifacts <dir> [--keep-last N]
-[--older-than-days D] [--apply]` (dry-run by default); suite-class-aware
-auto-pruning remains an open product decision, not a default. T7 (#12)
-stays parked on external Morpheus work.
+[--older-than-days D] [--apply]` (dry-run by default).
+
+In flight — **first real-harness adapter (Codex CLI)**, scoped plan in
+issue #40:
+
+- M1 landed (#41): real JSONL transcripts captured from codex 0.149.0,
+  sanitized to `tests/fixtures/transcripts/codex/`, replay-based parser +
+  offline shared-contract green. No network or auth in tests.
+- Next: **M2** disposable `CODEX_HOME` + secret/env wiring tests → **M3**
+  opt-in live smoke (`TONOS_LIVE_CODEX=1`) → **M4** executor registry keyed
+  by `declaration.harness.adapterKind` + `--harness codex` CLI flag.
+- Until M4 lands, the matrix executor still accepts only the `fixture`
+  kind; do not wire `codex` into it before M2/M3 gates pass.
+- One named-harness adapter at a time; the fixture contract
+  (`core/harness/contract.ts`) is the gate every real adapter passes first.
 
 Read these files before changing product behavior:
 
@@ -57,12 +51,10 @@ Read these files before changing product behavior:
 2. `docs/ARCHITECTURE.md` — target ports, records, data flow, and safety model;
 3. `docs/IMPLEMENTATION_PLAN.md` — T0-through-T8 agent work order and gates;
 4. `docs/INTEROPERABILITY.md` — optional, non-coupling Morpheus relationship;
-5. `legacy/lmstudio/CLAUDE.md` and `legacy/lmstudio/LEGACY_LM_STUDIO_HANDOFF.md` — historical LM Studio
-   operating evidence only.
+5. `legacy/lmstudio/CLAUDE.md` + handoff doc there — historical evidence only.
 
-Do not begin multiple named-harness adapters without an issue-scoped plan;
-the fixture adapter contract (`core/harness/contract.ts`) is the gate every
-real adapter must pass first.
+Caveat: `README.md`'s Status section predates the executed refactor — trust
+`docs/` over it.
 
 ## Product Boundary
 
@@ -111,6 +103,9 @@ identity, ownership proof, or a required field.
   server truth.
 - Keep the legacy LM Studio scripts functional until their replacement gates
   pass; label their mutations clearly and require explicit operator invocation.
+- Live provider and real-harness lanes are opt-in and must identify every
+  external service, workspace, configuration root, and allowed mutation
+  before execution; they never run in default CI.
 
 ## Engineering Rules
 
@@ -145,9 +140,24 @@ Legacy archive lane (required when touching `legacy/lmstudio/` or its tests):
 .\tests\run-tests.ps1
 ```
 
-CI runs all of these on every PR (windows pwsh gates; node gates on ubuntu +
-windows). Generated artifacts are LF-pinned via `.gitattributes` — never
-hand-edit `schemas/*.json` or `tests/fixtures/goldens/*.json`; rerun the
-emitters and commit the output. Live provider and real-harness lanes are
-opt-in and must identify every external service, workspace, configuration
-root, and allowed mutation before execution.
+Testing gotchas:
+
+- Suites must run through tsx (`npm test`, or
+  `npx tsx --test tests/ts/<file>.test.ts` for one file). Plain
+  `node --test` fails on TS parameter properties
+  (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`).
+- New loopback test servers must bind through the `listen()` helper in
+  `tests/ts/providers.test.ts`: it probes-and-rebinds ports the fetch spec
+  forbids (`Error: bad port`) — Windows dynamic ranges can deal them, and a
+  bare `listen(0)` there produces retry-immune flakes.
+- Process-tree assertions filter by a per-run `--marker=` argument; do not
+  scan all system processes (parallel test files run their own fixtures).
+- Live lanes are opt-in env-gated (`TONOS_LIVE_CODEX=1` once #40 M3 lands)
+  and never run in default CI.
+
+CI runs three jobs on every PR: `gates` (windows pwsh: legacy syntax checks
+and legacy unit tests — always, not only when legacy files change) and
+`node-gates` on ubuntu + windows (`npm ci` → typecheck → test →
+verify-generated). Generated artifacts are LF-pinned via `.gitattributes` —
+never hand-edit `schemas/*.json` or `tests/fixtures/goldens/*.json`; rerun
+the emitters and commit the output.
