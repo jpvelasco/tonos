@@ -291,6 +291,56 @@ test('a transient pre-response connection reset is retried transparently by both
   }
 });
 
+test('a provider stream that dies after headers reports disconnected, not cancelled', async () => {
+  const halfStream = createServer((req, res) => {
+    res.writeHead(200, {
+      'content-type':
+        req.url === '/chat' ? 'application/x-ndjson' : 'text/event-stream',
+    });
+    if (req.url === '/chat') {
+      res.write(`${JSON.stringify({ kind: 'piece', text: 'Hel' })}\n`);
+    } else {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Hel' } }] })}\n\n`);
+    }
+    // let the head of stream reach the client before killing the socket,
+    // so the death lands mid-body rather than racing the response headers
+    setTimeout(() => res.socket?.destroy(), 50).unref();
+  });
+
+  const url = await listen(halfStream);
+  const [viaSse, viaJsonl] = await Promise.all([
+    runOpenAiCompatibleExchange({
+      baseUrl: `${url}/v1`,
+      modelAlias: 'm',
+      prompt: 'p',
+      maxOutputTokens: 8,
+      timeoutMs: 5_000,
+    }),
+    runJsonLineFixtureExchange({
+      baseUrl: url,
+      modelAlias: 'm',
+      prompt: 'p',
+      maxOutputTokens: 8,
+      timeoutMs: 5_000,
+    }),
+  ]);
+  await new Promise<void>((resolve) => halfStream.close(() => resolve()));
+
+  for (const [label, outcome] of [['sse', viaSse], ['jsonl', viaJsonl]] as const) {
+    assert.equal(
+      outcome.observation.terminalReason,
+      'disconnected',
+      `${label}: the provider died mid-stream, which is observed instability, not our choice`,
+    );
+    assert.equal(outcome.finishReason, null);
+    assert.equal(outcome.observation.httpStatus, 200, 'the status was known before the stream died');
+    assert.ok(
+      (outcome.errorDetail ?? '').length > 0,
+      `${label}: the transport cause must stay visible`,
+    );
+  }
+});
+
 test('a fetch-forbidden origin is honest cancelled evidence, and listen() never deals such ports', async () => {
   // Find a port Node's fetch refuses ("bad port") that we can still bind.
   // Windows dynamic ranges starting below 65536 include spec-blocked ports;

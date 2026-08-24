@@ -7,6 +7,8 @@ export const TerminalReason = z.enum([
   'timeout',
   'http-error',
   'protocol-error',
+  /** The provider began answering but its stream died before completion. */
+  'disconnected',
 ]);
 export type TerminalReason = z.output<typeof TerminalReason>;
 

@@ -53,6 +53,7 @@ export async function runOpenAiCompatibleExchange(
     body: ssePayload(request),
   });
 
+  let responseStatus: number | null = null;
   try {
     const connected = await connectWithOneRetry(url, init(controller.signal));
     if (connected.response === undefined) {
@@ -75,6 +76,7 @@ export async function runOpenAiCompatibleExchange(
         errorDetail: bodyText,
       });
     }
+    responseStatus = response.status;
 
     let text = '';
     let finishReason: string | null = null;
@@ -133,6 +135,17 @@ export async function runOpenAiCompatibleExchange(
       }
     }
 
+    if (finishReason === null) {
+      // The stream ended without the provider's terminal event: whether the
+      // socket died or closed short, the exchange did not complete.
+      clearTimeout(timer);
+      return fail(request, started, {
+        terminalReason: 'disconnected',
+        httpStatus: response.status,
+        errorDetail: 'stream ended before finish_reason arrived',
+      });
+    }
+
     clearTimeout(timer);
     return {
       observation: buildObservation(
@@ -149,9 +162,18 @@ export async function runOpenAiCompatibleExchange(
     };
   } catch (cause) {
     clearTimeout(timer);
+    if (responseStatus !== null && !isTimeoutCause(cause)) {
+      // The provider accepted the request and began answering; its stream
+      // died before completion. That is observed instability, not our choice.
+      return fail(request, started, {
+        terminalReason: 'disconnected',
+        httpStatus: responseStatus,
+        errorDetail: describeTransportCause(cause),
+      });
+    }
     return fail(request, started, {
       terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
-      httpStatus: null,
+      httpStatus: responseStatus,
       errorDetail: describeTransportCause(cause),
     });
   }
