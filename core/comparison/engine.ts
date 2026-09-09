@@ -11,6 +11,14 @@ export interface RecordedTrial {
   terminalState: 'passed' | 'failed' | 'timed-out' | 'cancelled' | 'unsupported' | 'invalid';
   verificationPassed: boolean;
   totalWallMs: number;
+  attributedUsage?:
+    | {
+        promptTokens: number;
+        completionTokens: number;
+        reasoningTokens: number;
+      }
+    | undefined;
+  costMicros?: number | undefined;
 }
 
 export interface Comparability {
@@ -57,6 +65,18 @@ export interface TrialSummary {
   wallMsMedian: number;
   wallMsMin: number;
   wallMsMax: number;
+  tokenTotals: {
+    promptTokens: number;
+    completionTokens: number;
+    reasoningTokens: number;
+    samplesWithUsage: number;
+    samplesMissingUsage: number;
+  };
+  costTotals: {
+    amountMicros: number;
+    samplesWithCost: number;
+    samplesMissingCost: number;
+  };
 }
 
 export function aggregateTrial(
@@ -78,6 +98,25 @@ export function aggregateTrial(
       ? (walls[mid] as number)
       : Math.round(((walls[(mid ?? 1) - 1] ?? 0) + (walls[mid] ?? 0)) / 2);
 
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let reasoningTokens = 0;
+  let samplesWithUsage = 0;
+  let amountMicros = 0;
+  let samplesWithCost = 0;
+  for (const result of results) {
+    if (result.attributedUsage !== undefined) {
+      samplesWithUsage += 1;
+      promptTokens += result.attributedUsage.promptTokens;
+      completionTokens += result.attributedUsage.completionTokens;
+      reasoningTokens += result.attributedUsage.reasoningTokens;
+    }
+    if (result.costMicros !== undefined) {
+      samplesWithCost += 1;
+      amountMicros += result.costMicros;
+    }
+  }
+
   return {
     declarationId,
     samples: results.length,
@@ -86,6 +125,18 @@ export function aggregateTrial(
     wallMsMedian: median,
     wallMsMin: walls[0] ?? 0,
     wallMsMax: walls[walls.length - 1] ?? 0,
+    tokenTotals: {
+      promptTokens,
+      completionTokens,
+      reasoningTokens,
+      samplesWithUsage,
+      samplesMissingUsage: results.length - samplesWithUsage,
+    },
+    costTotals: {
+      amountMicros,
+      samplesWithCost,
+      samplesMissingCost: results.length - samplesWithCost,
+    },
   };
 }
 

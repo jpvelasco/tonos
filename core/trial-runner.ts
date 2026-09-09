@@ -89,6 +89,21 @@ export interface TrialRunOutput {
   evaluatorOutcomes: readonly RawEvaluatorOutcome[];
   verificationExit: number | null;
   cleanupComplete: boolean;
+  attributedUsage?:
+    | {
+        sourceTag: 'provider-reported';
+        promptTokens: number;
+        completionTokens: number;
+        reasoningTokens: number;
+      }
+    | undefined;
+  costEstimate?:
+    | {
+        rateTableRef: string;
+        currency: 'usd-micros';
+        amountMicros: number;
+      }
+    | undefined;
 }
 
 interface OwnedRoot {

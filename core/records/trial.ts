@@ -155,6 +155,21 @@ export const TrialResult = z.strictObject({
     removedCategories: z.array(BoundedText(64)).max(32),
   }),
   artifactDigests: z.record(RelativePath, Hex64),
+  attributedUsage: z
+    .strictObject({
+      sourceTag: z.literal('provider-reported'),
+      promptTokens: z.number().int().min(0),
+      completionTokens: z.number().int().min(0),
+      reasoningTokens: z.number().int().min(0),
+    })
+    .optional(),
+  costEstimate: z
+    .strictObject({
+      rateTableRef: BoundedText(64),
+      currency: z.literal('usd-micros'),
+      amountMicros: z.number().int().min(0),
+    })
+    .optional(),
 });
 export type TrialResult = z.output<typeof TrialResult>;
 

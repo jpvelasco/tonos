@@ -252,6 +252,61 @@
         "type": "string",
         "pattern": "^[0-9a-f]{64}$"
       }
+    },
+    "attributedUsage": {
+      "type": "object",
+      "properties": {
+        "sourceTag": {
+          "type": "string",
+          "const": "provider-reported"
+        },
+        "promptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "completionTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reasoningTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "sourceTag",
+        "promptTokens",
+        "completionTokens",
+        "reasoningTokens"
+      ],
+      "additionalProperties": false
+    },
+    "costEstimate": {
+      "type": "object",
+      "properties": {
+        "rateTableRef": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "const": "usd-micros"
+        },
+        "amountMicros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "rateTableRef",
+        "currency",
+        "amountMicros"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [

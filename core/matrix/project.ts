@@ -35,6 +35,18 @@ export function projectRecordedTrial(
     terminalState: result.terminalState,
     verificationPassed: verificationPassedOf(result),
     totalWallMs: result.clientTiming.totalWallMs,
+    ...(result.attributedUsage !== undefined
+      ? {
+          attributedUsage: {
+            promptTokens: result.attributedUsage.promptTokens,
+            completionTokens: result.attributedUsage.completionTokens,
+            reasoningTokens: result.attributedUsage.reasoningTokens,
+          },
+        }
+      : {}),
+    ...(result.costEstimate !== undefined
+      ? { costMicros: result.costEstimate.amountMicros }
+      : {}),
   };
 }
 

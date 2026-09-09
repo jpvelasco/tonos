@@ -109,6 +109,56 @@ test('skipped evaluators become declared missing evidence, never fabricated fail
   );
 });
 
+test('attributed usage and estimated cost survive codec round-trip without embedding rate secrets', () => {
+  const declaration = fixtureTrialDeclaration();
+  const result = composeTrialResult({
+    output: fixtureRunOutput({
+      attributedUsage: {
+        sourceTag: 'provider-reported',
+        promptTokens: 12,
+        completionTokens: 5,
+        reasoningTokens: 2,
+      },
+      costEstimate: {
+        rateTableRef: 'operator:fixture-rate-table',
+        currency: 'usd-micros',
+        amountMicros: 42,
+      },
+    }),
+    declaration,
+  });
+
+  const encoded = encode('trialResult', result);
+  const decoded = decode<TrialResult>('trialResult', encoded);
+  assert.deepEqual(decoded.attributedUsage, {
+    sourceTag: 'provider-reported',
+    promptTokens: 12,
+    completionTokens: 5,
+    reasoningTokens: 2,
+  });
+  assert.deepEqual(decoded.costEstimate, {
+    rateTableRef: 'operator:fixture-rate-table',
+    currency: 'usd-micros',
+    amountMicros: 42,
+  });
+  assert.ok(!encoded.includes('sk-'));
+  assert.ok(!encoded.includes('rate-secret'));
+});
+
+test('missing usage is declared evidence, never invented tokens or cost', () => {
+  const declaration = fixtureTrialDeclaration();
+  const result = composeTrialResult({
+    output: fixtureRunOutput(),
+    declaration,
+  });
+  assert.equal(result.attributedUsage, undefined);
+  assert.equal(result.costEstimate, undefined);
+  assert.ok(
+    result.missingEvidence.some((entry) => entry.includes('token usage')),
+    'absent usage must be declared, not invented',
+  );
+});
+
 test('non-canonical tool names are recorded as missing evidence instead of breaking the document', () => {
   const declaration = fixtureTrialDeclaration();
   const result = composeTrialResult({
