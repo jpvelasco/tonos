@@ -1,7 +1,7 @@
 # Tonos Architecture
 
-Status: Accepted target architecture; current PowerShell toolkit requires
-refactoring
+Status: Accepted architecture; primary TypeScript path implements these
+ports. The PowerShell toolkit is archived under `legacy/lmstudio/`.
 
 Architecture date: 2026-08-22
 

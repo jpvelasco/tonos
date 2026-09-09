@@ -1,7 +1,8 @@
 # Tonos Provider-Agnostic Implementation Plan
 
-Status: Active future implementation handoff; documentation work only is
-authorized as of 2026-08-22
+Status: T0–T6 and T8 executed on tip; T7 remains optional and externally
+gated. Codex adapter M1–M4 landed. This plan is the historical work order,
+not an unstarted handoff.
 
 Audited predecessor source: `bd894505be554632ad16aca3d06bbd503b94dddf`
 
