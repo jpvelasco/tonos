@@ -6,8 +6,9 @@ import type { TrialDeclarationPayload } from '../../core/records/trial.ts';
 import type { OperatorCancellation } from '../../core/trial-runner.ts';
 import { FixtureTrialExecutor } from './trial-executor.ts';
 import { CodexTrialExecutor } from './codex-executor.ts';
+import { ClaudeTrialExecutor } from './claude-executor.ts';
 
-export type RegisteredHarnessKind = 'fixture' | 'codex';
+export type RegisteredHarnessKind = 'fixture' | 'codex' | 'openclaude';
 
 export interface RegistryOptions {
   workspaceTemplateDir: string;
@@ -22,9 +23,9 @@ export function parseHarnessKinds(
   if (raw === undefined || raw.length === 0) return ['fixture'];
   const kinds: RegisteredHarnessKind[] = [];
   for (const value of raw) {
-    if (value !== 'fixture' && value !== 'codex') {
+    if (value !== 'fixture' && value !== 'codex' && value !== 'openclaude') {
       throw new Error(
-        `unknown harness kind '${value}'; registered kinds are fixture, codex`,
+        `unknown harness kind '${value}'; registered kinds are fixture, codex, openclaude`,
       );
     }
     if (!kinds.includes(value)) kinds.push(value);
@@ -78,7 +79,13 @@ function executorFor(
       fixtureHarnessPath: options.fixtureHarnessPath,
     });
   }
-  return new CodexTrialExecutor({
+  if (kind === 'codex') {
+    return new CodexTrialExecutor({
+      workspaceTemplateDir: options.workspaceTemplateDir,
+      promptPath: options.promptPath,
+    });
+  }
+  return new ClaudeTrialExecutor({
     workspaceTemplateDir: options.workspaceTemplateDir,
     promptPath: options.promptPath,
   });

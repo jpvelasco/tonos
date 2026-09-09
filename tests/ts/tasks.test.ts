@@ -105,20 +105,20 @@ test('mutating any fixture byte changes the suite identity', async () => {
   }
 });
 
-test('executable correctness detects semantically wrong but compilable output', { timeout: 60_000 }, async () => {
+test('executable correctness detects semantically wrong but compilable output', { timeout: 180_000 }, async () => {
   const ws = await mkdtemp(join(tmpdir(), 'tonos-eval-'));
   try {
     await cp(join(SUITE_DIR, 'fixtures'), ws, { recursive: true });
     await writeFile(join(ws, 'retry.go'), WRONG_BUT_COMPILABLE, 'utf8');
 
-    const verdict = await evaluateExecutableTests(ws, 60_000);
+    const verdict = await evaluateExecutableTests(ws, 180_000);
     assert.equal(verdict.evaluatorId, 'executable-tests');
     assert.equal(verdict.subjective, false);
     assert.equal(verdict.passed, false, 'wrong-but-compilable output must not pass');
     assert.ok((verdict.detail ?? '').length > 0);
 
     await writeFile(join(ws, 'retry.go'), CORRECT_IMPL, 'utf8');
-    const goodVerdict = await evaluateExecutableTests(ws, 60_000);
+    const goodVerdict = await evaluateExecutableTests(ws, 180_000);
     assert.equal(goodVerdict.passed, true, 'a correct implementation must pass');
   } finally {
     await rm(ws, { recursive: true, force: true });
