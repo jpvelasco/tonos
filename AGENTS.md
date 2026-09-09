@@ -37,11 +37,11 @@ issue #40:
 - M1 landed (#41): real JSONL transcripts captured from codex 0.149.0,
   sanitized to `tests/fixtures/transcripts/codex/`, replay-based parser +
   offline shared-contract green. No network or auth in tests.
-- Next: **M2** disposable `CODEX_HOME` + secret/env wiring tests → **M3**
-  opt-in live smoke (`TONOS_LIVE_CODEX=1`) → **M4** executor registry keyed
-  by `declaration.harness.adapterKind` + `--harness codex` CLI flag.
-- Until M4 lands, the matrix executor still accepts only the `fixture`
-  kind; do not wire `codex` into it before M2/M3 gates pass.
+- M2–M4 landed: disposable `CODEX_HOME` via `ConfigurationPort`, secret
+  injection through `TONOS_SECRET_*`, live spawn through `ProcessPort`
+  with suite task prompt content (#45), opt-in live smoke gated on
+  `TONOS_LIVE_CODEX=1` (never default CI), and an executor registry
+  keyed by `declaration.harness.adapterKind` with `--harness fixture|codex`.
 - One named-harness adapter at a time; the fixture contract
   (`core/harness/contract.ts`) is the gate every real adapter passes first.
 

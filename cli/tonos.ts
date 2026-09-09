@@ -14,7 +14,10 @@ import {
 } from '../core/matrix/runner.ts';
 import { FileSystemMatrixStore } from '../adapters/matrix/fs-matrix-store.ts';
 import { FileSystemArtifactGc } from '../adapters/matrix/fs-artifact-gc.ts';
-import { FixtureTrialExecutor } from '../adapters/matrix/trial-executor.ts';
+import {
+  parseHarnessKinds,
+  RegistryTrialExecutor,
+} from '../adapters/matrix/executor-registry.ts';
 import { createCancellation } from '../core/trial-runner.ts';
 
 const EXIT_OK = 0;
@@ -69,20 +72,32 @@ async function commandRun(args: {
   artifacts: string;
   workspaceTemplate?: string | undefined;
   fixtureHarness?: string | undefined;
+  harness?: readonly string[] | undefined;
+  prompt?: string | undefined;
   maxConcurrent?: number | undefined;
 }): Promise<number> {
   const matrix = await loadMatrix(args.matrixPath);
-  if (args.workspaceTemplate === undefined || args.fixtureHarness === undefined) {
-    return fail(EXIT_USAGE, 'matrix run requires --workspace-template and --fixture-harness');
+  if (args.workspaceTemplate === undefined) {
+    return fail(EXIT_USAGE, 'matrix run requires --workspace-template');
+  }
+
+  let kinds;
+  try {
+    kinds = parseHarnessKinds(args.harness);
+  } catch (cause) {
+    return fail(EXIT_USAGE, String(cause instanceof Error ? cause.message : cause));
+  }
+  if (kinds.includes('fixture') && args.fixtureHarness === undefined) {
+    return fail(EXIT_USAGE, 'matrix run requires --fixture-harness when fixture is registered');
   }
 
   const unsupported = matrix.declarations.filter(
-    (declaration) => declaration.harness.adapterKind !== 'fixture',
+    (declaration) => !kinds.includes(declaration.harness.adapterKind as (typeof kinds)[number]),
   );
   if (unsupported.length > 0) {
     return fail(
       EXIT_UNSUPPORTED_ADAPTER,
-      `no executor for adapter kind '${unsupported[0]!.harness.adapterKind}' (${unsupported.length} declaration(s)); only 'fixture' is registered`,
+      `no executor for adapter kind '${unsupported[0]!.harness.adapterKind}' (${unsupported.length} declaration(s)); registered: ${kinds.join(', ')}`,
     );
   }
 
@@ -91,9 +106,11 @@ async function commandRun(args: {
 
   const runner = new MatrixRunner(
     buildStore(matrix, args.artifacts),
-    new FixtureTrialExecutor({
+    new RegistryTrialExecutor({
       workspaceTemplateDir: args.workspaceTemplate,
       fixtureHarnessPath: args.fixtureHarness,
+      promptPath: args.prompt,
+      kinds,
     }),
     { nowIso: () => new Date().toISOString(), monotonicMs: () => Date.now() },
   );
@@ -196,6 +213,8 @@ const { positionals, values } = parseArgs({
     artifacts: { type: 'string' },
     'workspace-template': { type: 'string' },
     'fixture-harness': { type: 'string' },
+    harness: { type: 'string', multiple: true },
+    prompt: { type: 'string' },
     'max-concurrent': { type: 'string' },
     'keep-last': { type: 'string' },
     'older-than-days': { type: 'string' },
@@ -227,7 +246,7 @@ if (group === 'matrix' && command === 'prune') {
 if (group !== 'matrix' || command === undefined || matrixPath === undefined) {
   fail(
     EXIT_USAGE,
-    'usage: tonos matrix <run|qualify> <matrix.json> --artifacts <dir> [--workspace-template <dir>] [--fixture-harness <path>] [--max-concurrent <n>]\n' +
+    'usage: tonos matrix <run|qualify> <matrix.json> --artifacts <dir> [--workspace-template <dir>] [--fixture-harness <path>] [--harness fixture|codex] [--prompt <path>] [--max-concurrent <n>]\n' +
       '       tonos matrix prune --artifacts <dir> [--keep-last N] [--older-than-days D] [--apply]\n' +
       "resume is implicit: re-running against the same --artifacts dir adopts verified results and executes only what remains",
   );
@@ -242,6 +261,8 @@ const exitCode = await (command === 'run'
       artifacts: values.artifacts,
       workspaceTemplate: values['workspace-template'],
       fixtureHarness: values['fixture-harness'],
+      harness: values.harness,
+      prompt: values.prompt,
       maxConcurrent:
         values['max-concurrent'] !== undefined
           ? Number(values['max-concurrent'])
