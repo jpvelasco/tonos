@@ -59,6 +59,8 @@
                   "grok-cli",
                   "zero",
                   "openclaude",
+                  "aider",
+                  "cline",
                   "fixture"
                 ]
               },

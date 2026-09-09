@@ -257,7 +257,7 @@ if (group === 'matrix' && command === 'prune') {
 if (group !== 'matrix' || command === undefined || matrixPath === undefined) {
   fail(
     EXIT_USAGE,
-    'usage: tonos matrix <run|qualify> <matrix.json> --artifacts <dir> [--workspace-template <dir>] [--fixture-harness <path>] [--harness fixture|codex|openclaude] [--prompt <path>] [--max-concurrent <n>]\n' +
+    'usage: tonos matrix <run|qualify> <matrix.json> --artifacts <dir> [--workspace-template <dir>] [--fixture-harness <path>] [--harness fixture|codex|openclaude|aider|cline] [--prompt <path>] [--max-concurrent <n>]\n' +
       '       tonos matrix prune --artifacts <dir> [--keep-last N] [--older-than-days D] [--apply]\n' +
       "resume is implicit: re-running against the same --artifacts dir adopts verified results and executes only what remains",
   );
