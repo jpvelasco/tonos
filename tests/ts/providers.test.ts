@@ -6,6 +6,7 @@ import { once } from 'node:events';
 import { encode, decode, type RecordKind } from '../../core/codec.ts';
 import { runOpenAiCompatibleExchange } from '../../adapters/providers/openai-compatible.ts';
 import { runJsonLineFixtureExchange } from '../../adapters/providers/json-line-fixture.ts';
+import { connectWithOneRetry } from '../../adapters/providers/transport.ts';
 import type { ExchangeOutcome } from '../../core/providers/types.ts';
 
 const CANARY = 'tonos-provider-canary';
@@ -245,6 +246,36 @@ test('the same adapter serves loopback IPs and hostnames identically', async () 
   assert.equal(a.observation.terminalReason, 'completed');
   assert.equal(b.observation.terminalReason, 'completed');
   assert.deepEqual(a.observation.usage, b.observation.usage);
+});
+
+test('connect retry uses a fresh signal after the first attempt is aborted', async () => {
+  let posts = 0;
+  const server = createServer((req, res) => {
+    if (req.method !== 'POST') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+    posts += 1;
+    if (posts === 1) return; // hang until the first attempt's deadline fires
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('ok');
+  });
+  const url = await listen(server);
+  const signals: AbortSignal[] = [];
+  const connected = await connectWithOneRetry(url, () => {
+    const signal = AbortSignal.timeout(80);
+    signals.push(signal);
+    return { method: 'POST', signal };
+  });
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+
+  assert.equal(signals.length, 2, 'the retry must build a second request init');
+  assert.notEqual(signals[0], signals[1]);
+  assert.equal(signals[0]?.aborted, true);
+  assert.equal(signals[1]?.aborted, false);
+  assert.ok(connected.response instanceof Response);
+  assert.equal(posts, 2);
 });
 
 test('a transient pre-response connection reset is retried transparently by both protocol adapters', async () => {

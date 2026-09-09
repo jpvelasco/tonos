@@ -8,6 +8,7 @@ import {
   redactSecrets,
 } from './credentials.ts';
 import {
+  attemptSignal,
   connectWithOneRetry,
   describeTransportCause,
   isTimeoutCause,
@@ -55,9 +56,9 @@ export async function runOpenAiCompatibleExchange(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
   const url = `${request.baseUrl}/chat/completions`;
-  const init = (signal: AbortSignal) => ({
+  const init = () => ({
     method: 'POST' as const,
-    signal,
+    signal: attemptSignal(controller.signal, request.timeoutMs),
     headers: {
       'content-type': 'application/json',
       ...bearerHeaders(secrets),
@@ -67,7 +68,7 @@ export async function runOpenAiCompatibleExchange(
 
   let responseStatus: number | null = null;
   try {
-    const connected = await connectWithOneRetry(url, init(controller.signal));
+    const connected = await connectWithOneRetry(url, init);
     if (connected.response === undefined) {
       clearTimeout(timer);
       const cause = connected.cause;
