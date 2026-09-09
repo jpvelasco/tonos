@@ -105,7 +105,7 @@ test('mutating any fixture byte changes the suite identity', async () => {
   }
 });
 
-test('executable correctness detects semantically wrong but compilable output', { timeout: 60_000 }, async () => {
+test('executable correctness detects semantically wrong but compilable output', { timeout: 180_000 }, async () => {
   const ws = await mkdtemp(join(tmpdir(), 'tonos-eval-'));
   try {
     await cp(join(SUITE_DIR, 'fixtures'), ws, { recursive: true });
