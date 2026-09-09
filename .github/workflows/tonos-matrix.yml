@@ -1,0 +1,71 @@
+name: tonos-matrix
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: Opt-in live harness/provider execution. Default is fixture-only.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tonos-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fixture-matrix:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.live != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run fixture matrix
+        env:
+          TONOS_LIVE_CODEX: ''
+          TONOS_LIVE_CLAUDE: ''
+        run: |
+          npm run cli -- matrix run tests/fixtures/ci/fixture-matrix.json \
+            --artifacts artifacts/tonos-matrix \
+            --workspace-template tasks/retry-suite/fixtures \
+            --fixture-harness tests/fixtures/harness/fixture-harness.mjs \
+            --harness fixture
+          npm run cli -- matrix qualify tests/fixtures/ci/fixture-matrix.json \
+            --artifacts artifacts/tonos-matrix \
+            --report markdown > artifacts/tonos-matrix/report.md
+      - name: Upload sanitized artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tonos-fixture-matrix
+          path: artifacts/tonos-matrix
+          if-no-files-found: error
+
+  live-matrix:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.live == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Refuse unless live secrets are explicitly provided
+        env:
+          TONOS_LIVE_CODEX: ${{ secrets.TONOS_LIVE_CODEX }}
+        run: |
+          if [ "${TONOS_LIVE_CODEX}" != "1" ]; then
+            echo "live mode is opt-in and requires repository secret TONOS_LIVE_CODEX=1"
+            exit 1
+          fi
+          echo "live mode requested; default PR path remains fixture-only"
