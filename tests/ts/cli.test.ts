@@ -222,6 +222,26 @@ test('matrix prune plans by default and deletes only on --apply', { timeout: 120
   }
 });
 
+test('committed CI matrix workflow stays fixture-default with live Codex off', async () => {
+  const workflow = await readFile(
+    new URL('../../.github/workflows/tonos-matrix.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(workflow, /--harness fixture/u);
+  assert.match(workflow, /TONOS_LIVE_CODEX: ''/u);
+  assert.match(workflow, /inputs.live != true/u);
+  assert.ok(!workflow.includes('TONOS_LIVE_CODEX: 1'));
+
+  const matrix = JSON.parse(
+    await readFile(
+      new URL('../fixtures/ci/fixture-matrix.json', import.meta.url),
+      'utf8',
+    ),
+  ) as { declarations: Array<{ harness: { adapterKind: string }; provider: { secretRefs: string[] } }> };
+  assert.equal(matrix.declarations[0]?.harness.adapterKind, 'fixture');
+  assert.deepEqual(matrix.declarations[0]?.provider.secretRefs, []);
+});
+
 test('matrix prune without a retention axis is a usage error', async () => {
   const root = await mkdtemp(join(tmpdir(), 'tonos-cli-prune-bad-'));
   try {
