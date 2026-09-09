@@ -4,6 +4,10 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { decode, encode, CodecError } from '../core/codec.ts';
+import {
+  renderQualificationHtml,
+  renderQualificationMarkdown,
+} from '../core/matrix/report.ts';
 import { TrialMatrix } from '../core/records/matrix.ts';
 import type { TrialMatrix as TrialMatrixType } from '../core/records/matrix.ts';
 import { matrixDigestOf } from '../core/matrix/units.ts';
@@ -139,6 +143,7 @@ async function commandRun(args: {
 async function commandQualify(args: {
   matrixPath: string;
   artifacts: string;
+  reportFormat?: string | undefined;
 }): Promise<number> {
   const matrix = await loadMatrix(args.matrixPath);
   const runner = new MatrixRunner(
@@ -153,6 +158,11 @@ async function commandQualify(args: {
   try {
     const decision = await runner.qualify(matrix);
     process.stdout.write(`${encode('qualificationDecision', decision)}\n`);
+    if (args.reportFormat === 'markdown') {
+      process.stdout.write(renderQualificationMarkdown(decision));
+    } else if (args.reportFormat === 'html') {
+      process.stdout.write(renderQualificationHtml(decision));
+    }
     return EXIT_OK;
   } catch (cause) {
     return fail(EXIT_INCOMPLETE, String(cause instanceof Error ? cause.message : cause));
@@ -215,6 +225,7 @@ const { positionals, values } = parseArgs({
     'fixture-harness': { type: 'string' },
     harness: { type: 'string', multiple: true },
     prompt: { type: 'string' },
+    report: { type: 'string' },
     'max-concurrent': { type: 'string' },
     'keep-last': { type: 'string' },
     'older-than-days': { type: 'string' },
@@ -269,7 +280,11 @@ const exitCode = await (command === 'run'
           : undefined,
     })
   : command === 'qualify'
-    ? commandQualify({ matrixPath: matrixPath!, artifacts: values.artifacts })
+    ? commandQualify({
+        matrixPath: matrixPath!,
+        artifacts: values.artifacts,
+        reportFormat: values.report,
+      })
     : Promise.resolve(
         fail(EXIT_USAGE, `unknown command '${command}'; expected 'run' or 'qualify'`),
       ));
