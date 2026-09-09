@@ -8,6 +8,7 @@ import {
   redactSecrets,
 } from './credentials.ts';
 import {
+  armExchangeTimeout,
   attemptSignal,
   connectWithOneRetry,
   describeTransportCause,
@@ -54,7 +55,7 @@ export async function runOpenAiCompatibleExchange(
   const secrets = prepared.secrets;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), request.timeoutMs);
+  const releaseTimeout = armExchangeTimeout(() => controller.abort(), request.timeoutMs);
   const url = `${request.baseUrl}/chat/completions`;
   const init = () => ({
     method: 'POST' as const,
@@ -70,7 +71,6 @@ export async function runOpenAiCompatibleExchange(
   try {
     const connected = await connectWithOneRetry(url, init);
     if (connected.response === undefined) {
-      clearTimeout(timer);
       const cause = connected.cause;
       return fail(request, started, secrets, {
         terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
@@ -82,7 +82,6 @@ export async function runOpenAiCompatibleExchange(
 
     if (!response.ok) {
       const bodyText = (await response.text()).slice(0, 256);
-      clearTimeout(timer);
       return fail(request, started, secrets, {
         terminalReason: 'http-error',
         httpStatus: response.status,
@@ -115,7 +114,6 @@ export async function runOpenAiCompatibleExchange(
         try {
           chunk = JSON.parse(payload) as OpenAiChunk;
         } catch {
-          clearTimeout(timer);
           return fail(request, started, secrets, {
             terminalReason: 'protocol-error',
             httpStatus: response.status,
@@ -151,7 +149,6 @@ export async function runOpenAiCompatibleExchange(
     if (finishReason === null) {
       // The stream ended without the provider's terminal event: whether the
       // socket died or closed short, the exchange did not complete.
-      clearTimeout(timer);
       return fail(request, started, secrets, {
         terminalReason: 'disconnected',
         httpStatus: response.status,
@@ -159,7 +156,6 @@ export async function runOpenAiCompatibleExchange(
       });
     }
 
-    clearTimeout(timer);
     return {
       observation: buildObservation(
         request,
@@ -174,7 +170,6 @@ export async function runOpenAiCompatibleExchange(
       finishReason,
     };
   } catch (cause) {
-    clearTimeout(timer);
     if (responseStatus !== null && !isTimeoutCause(cause)) {
       // The provider accepted the request and began answering; its stream
       // died before completion. That is observed instability, not our choice.
@@ -189,6 +184,8 @@ export async function runOpenAiCompatibleExchange(
       httpStatus: responseStatus,
       errorDetail: describeTransportCause(cause),
     });
+  } finally {
+    releaseTimeout();
   }
 }
 

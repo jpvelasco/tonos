@@ -6,7 +6,7 @@ import { once } from 'node:events';
 import { encode, decode, type RecordKind } from '../../core/codec.ts';
 import { runOpenAiCompatibleExchange } from '../../adapters/providers/openai-compatible.ts';
 import { runJsonLineFixtureExchange } from '../../adapters/providers/json-line-fixture.ts';
-import { connectWithOneRetry } from '../../adapters/providers/transport.ts';
+import { armExchangeTimeout, connectWithOneRetry } from '../../adapters/providers/transport.ts';
 import type { ExchangeOutcome } from '../../core/providers/types.ts';
 
 const CANARY = 'tonos-provider-canary';
@@ -177,6 +177,58 @@ test('observations are versioned canonical documents that survive the codec', as
   const encoded = encode('providerExchangeObservation', outcome.observation);
   const decoded = decode<{ terminalReason: string }>('providerExchangeObservation', encoded);
   assert.equal(decoded.terminalReason, 'completed');
+});
+
+test('armExchangeTimeout releases the timer exactly once', () => {
+  const cancelled: unknown[] = [];
+  const handle = { id: 1 };
+  const release = armExchangeTimeout(
+    () => {
+      throw new Error('armed timeout must not fire after release');
+    },
+    30_000,
+    () => handle,
+    (timer) => {
+      cancelled.push(timer);
+    },
+  );
+  release();
+  release();
+  assert.deepEqual(cancelled, [handle]);
+});
+
+test('json-line http-error and protocol-error paths still produce honest outcomes', async () => {
+  const http = createServer((_req, res) => {
+    res.writeHead(503, { 'content-type': 'text/plain' });
+    res.end('overloaded');
+  });
+  const httpUrl = await listen(http);
+  const httpOutcome = await runJsonLineFixtureExchange({
+    baseUrl: httpUrl,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+  });
+  await new Promise<void>((resolve) => http.close(() => resolve()));
+  assert.equal(httpOutcome.observation.terminalReason, 'http-error');
+  assert.equal(httpOutcome.observation.httpStatus, 503);
+
+  const proto = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+    res.end('not-json\n');
+  });
+  const protoUrl = await listen(proto);
+  const protoOutcome = await runJsonLineFixtureExchange({
+    baseUrl: protoUrl,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+  });
+  await new Promise<void>((resolve) => proto.close(() => resolve()));
+  assert.equal(protoOutcome.observation.terminalReason, 'protocol-error');
+  assert.equal(protoOutcome.observation.httpStatus, 200);
 });
 
 test('http errors become http-error outcomes with bounded status evidence', async () => {

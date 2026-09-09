@@ -4,6 +4,7 @@ import {
 } from '../../core/providers/canonical.ts';
 import { failClosedIfUnresolved } from './credentials.ts';
 import {
+  armExchangeTimeout,
   attemptSignal,
   connectWithOneRetry,
   describeTransportCause,
@@ -35,7 +36,7 @@ export async function runJsonLineFixtureExchange(
   if (!prepared.ok) return prepared.outcome;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), request.timeoutMs);
+  const releaseTimeout = armExchangeTimeout(() => controller.abort(), request.timeoutMs);
 
   let responseStatus: number | null = null;
   try {
@@ -46,7 +47,6 @@ export async function runJsonLineFixtureExchange(
       body: JSON.stringify({ model: request.modelAlias, say: request.prompt, cap: request.maxOutputTokens }),
     }));
     if (connected.response === undefined) {
-      clearTimeout(timer);
       const cause = connected.cause;
       return fail(request, started, {
         terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
@@ -121,7 +121,6 @@ export async function runJsonLineFixtureExchange(
     if (!sawFinal) {
       // The stream ended without the provider's terminal frame: whether the
       // socket died or closed short, the exchange did not complete.
-      clearTimeout(timer);
       return fail(request, started, {
         terminalReason: 'disconnected',
         httpStatus: response.status,
@@ -129,7 +128,6 @@ export async function runJsonLineFixtureExchange(
       });
     }
 
-    clearTimeout(timer);
     return {
       observation: buildObservation(request, 'json-line-fixture', started, firstByteMs, usage, attributed, {
         terminalReason: 'completed',
@@ -139,7 +137,6 @@ export async function runJsonLineFixtureExchange(
       finishReason,
     };
   } catch (cause) {
-    clearTimeout(timer);
     if (responseStatus !== null && !isTimeoutCause(cause)) {
       return fail(request, started, {
         terminalReason: 'disconnected',
@@ -152,6 +149,8 @@ export async function runJsonLineFixtureExchange(
       httpStatus: responseStatus,
       errorDetail: describeTransportCause(cause),
     });
+  } finally {
+    releaseTimeout();
   }
 }
 
