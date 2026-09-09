@@ -9,6 +9,8 @@ export const TerminalReason = z.enum([
   'protocol-error',
   /** The provider began answering but its stream died before completion. */
   'disconnected',
+  /** A declared secret ref could not be resolved; nothing was sent. */
+  'configuration-error',
 ]);
 export type TerminalReason = z.output<typeof TerminalReason>;
 

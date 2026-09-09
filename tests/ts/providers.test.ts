@@ -409,3 +409,170 @@ async function listenOn(server: Server, port: number): Promise<string> {
   return `http://127.0.0.1:${port}`;
 }
 
+interface CapturedExchange {
+  method: string;
+  url: string | undefined;
+  authorization: string | undefined;
+  headerNames: string[];
+}
+
+function capturingSseServer(): FixtureServer & { captured: CapturedExchange[] } {
+  const captured: CapturedExchange[] = [];
+  const inner = sseServer();
+  const original = inner.server.listeners('request')[0] as
+    | ((req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void)
+    | undefined;
+  if (original === undefined) {
+    throw new Error('sse fixture lost its request listener');
+  }
+  inner.server.removeListener('request', original);
+  inner.server.on('request', (req, res) => {
+    captured.push({
+      method: req.method ?? '',
+      url: req.url,
+      authorization: headerValue(req.headers.authorization),
+      headerNames: Object.keys(req.headers),
+    });
+    original(req, res);
+  });
+  return { ...inner, captured };
+}
+
+function outboundPosts(captured: readonly CapturedExchange[]): CapturedExchange[] {
+  return captured.filter((hit) => hit.method === 'POST');
+}
+
+function headerValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+function credentialCanary(): string {
+  return `tonos-cred-canary-${process.pid}-${Date.now()}`;
+}
+
+function assertCanaryAbsent(canary: string, surfaces: readonly unknown[]): void {
+  for (const surface of surfaces) {
+    const rendered = typeof surface === 'string' ? surface : JSON.stringify(surface);
+    assert.ok(
+      rendered === undefined || !rendered.includes(canary),
+      'resolved credential material must not appear in persisted or exported surfaces',
+    );
+  }
+}
+
+test('openai-compatible attaches resolved credentials on the outbound request', async () => {
+  const canary = credentialCanary();
+  const fixture = capturingSseServer();
+  const url = await listen(fixture.server);
+  const outcome = await runOpenAiCompatibleExchange({
+    baseUrl: `${url}/v1`,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+    secretRefs: ['credman:fixture-key-ref'],
+    resolveSecret: () => canary,
+  });
+  await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
+
+  assert.equal(outcome.observation.terminalReason, 'completed');
+  const posts = outboundPosts(fixture.captured);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0]?.authorization, `Bearer ${canary}`);
+  assertCanaryAbsent(canary, [
+    outcome.observation,
+    outcome.errorDetail,
+    encode('providerExchangeObservation', outcome.observation),
+  ]);
+});
+
+test('openai-compatible adds no authentication material when secret refs are absent', async () => {
+  const fixture = capturingSseServer();
+  const url = await listen(fixture.server);
+  const outcome = await runOpenAiCompatibleExchange({
+    baseUrl: `${url}/v1`,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+  });
+  await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
+
+  assert.equal(outcome.observation.terminalReason, 'completed');
+  const posts = outboundPosts(fixture.captured);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0]?.authorization, undefined);
+  assert.ok(
+    !(posts[0]?.headerNames ?? []).some((name) =>
+      /authorization|api-key|x-api-key|token/iu.test(name),
+    ),
+    'absent secret refs must not invent an authentication header',
+  );
+});
+
+test('unresolved secret refs fail closed before any outbound request', async () => {
+  const fixture = capturingSseServer();
+  const url = await listen(fixture.server);
+  const outcome = await runOpenAiCompatibleExchange({
+    baseUrl: `${url}/v1`,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+    secretRefs: ['credman:missing-ref'],
+    resolveSecret: () => undefined,
+  });
+  await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
+
+  assert.equal(outcome.observation.terminalReason, 'configuration-error');
+  assert.equal(outcome.observation.httpStatus, null);
+  assert.equal(outboundPosts(fixture.captured).length, 0);
+  assert.match(outcome.errorDetail ?? '', /secret reference 'credman:missing-ref' is unresolved/u);
+});
+
+test('resolved credential canaries never appear in observations, exports, or errorDetail', async () => {
+  const canary = credentialCanary();
+  const echo = createServer((req, res) => {
+    res.writeHead(401, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        error: { message: `rejected ${headerValue(req.headers.authorization)}` },
+      }),
+    );
+  });
+  const url = await listen(echo);
+  const failed = await runOpenAiCompatibleExchange({
+    baseUrl: `${url}/v1`,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+    secretRefs: ['credman:fixture-key-ref'],
+    resolveSecret: () => canary,
+  });
+  const missing = await runOpenAiCompatibleExchange({
+    baseUrl: `${url}/v1`,
+    modelAlias: 'test-model',
+    prompt: 'hi',
+    maxOutputTokens: 8,
+    timeoutMs: 5_000,
+    secretRefs: ['credman:missing-ref'],
+    resolveSecret: () => {
+      throw new Error(`unresolved while holding ${canary}`);
+    },
+  });
+  await new Promise<void>((resolve) => echo.close(() => resolve()));
+
+  assert.equal(failed.observation.terminalReason, 'http-error');
+  assert.equal(missing.observation.terminalReason, 'configuration-error');
+  assertCanaryAbsent(canary, [
+    failed,
+    missing,
+    failed.errorDetail,
+    missing.errorDetail,
+    encode('providerExchangeObservation', failed.observation),
+    encode('providerExchangeObservation', missing.observation),
+  ]);
+});
+

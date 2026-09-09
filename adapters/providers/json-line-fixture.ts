@@ -2,6 +2,7 @@ import {
   buildObservation,
   failedOutcome,
 } from '../../core/providers/canonical.ts';
+import { failClosedIfUnresolved } from './credentials.ts';
 import {
   connectWithOneRetry,
   describeTransportCause,
@@ -29,6 +30,9 @@ export async function runJsonLineFixtureExchange(
   request: ExchangeRequest & { profileId?: string },
 ): Promise<ExchangeOutcome> {
   const started = Date.now();
+  const prepared = failClosedIfUnresolved(request, 'json-line-fixture', started);
+  if (!prepared.ok) return prepared.outcome;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
 

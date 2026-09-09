@@ -3,6 +3,11 @@ import {
   failedOutcome,
 } from '../../core/providers/canonical.ts';
 import {
+  bearerHeaders,
+  failClosedIfUnresolved,
+  redactSecrets,
+} from './credentials.ts';
+import {
   connectWithOneRetry,
   describeTransportCause,
   isTimeoutCause,
@@ -43,13 +48,20 @@ export async function runOpenAiCompatibleExchange(
   request: ExchangeRequest & { profileId?: string },
 ): Promise<ExchangeOutcome> {
   const started = Date.now();
+  const prepared = failClosedIfUnresolved(request, 'openai-compatible', started);
+  if (!prepared.ok) return prepared.outcome;
+  const secrets = prepared.secrets;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), request.timeoutMs);
   const url = `${request.baseUrl}/chat/completions`;
   const init = (signal: AbortSignal) => ({
     method: 'POST' as const,
     signal,
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...bearerHeaders(secrets),
+    },
     body: ssePayload(request),
   });
 
@@ -59,7 +71,7 @@ export async function runOpenAiCompatibleExchange(
     if (connected.response === undefined) {
       clearTimeout(timer);
       const cause = connected.cause;
-      return fail(request, started, {
+      return fail(request, started, secrets, {
         terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
         httpStatus: null,
         errorDetail: describeTransportCause(cause),
@@ -70,7 +82,7 @@ export async function runOpenAiCompatibleExchange(
     if (!response.ok) {
       const bodyText = (await response.text()).slice(0, 256);
       clearTimeout(timer);
-      return fail(request, started, {
+      return fail(request, started, secrets, {
         terminalReason: 'http-error',
         httpStatus: response.status,
         errorDetail: bodyText,
@@ -103,7 +115,7 @@ export async function runOpenAiCompatibleExchange(
           chunk = JSON.parse(payload) as OpenAiChunk;
         } catch {
           clearTimeout(timer);
-          return fail(request, started, {
+          return fail(request, started, secrets, {
             terminalReason: 'protocol-error',
             httpStatus: response.status,
             errorDetail: `unparseable SSE payload near: ${payload.slice(0, 60)}`,
@@ -139,7 +151,7 @@ export async function runOpenAiCompatibleExchange(
       // The stream ended without the provider's terminal event: whether the
       // socket died or closed short, the exchange did not complete.
       clearTimeout(timer);
-      return fail(request, started, {
+      return fail(request, started, secrets, {
         terminalReason: 'disconnected',
         httpStatus: response.status,
         errorDetail: 'stream ended before finish_reason arrived',
@@ -165,13 +177,13 @@ export async function runOpenAiCompatibleExchange(
     if (responseStatus !== null && !isTimeoutCause(cause)) {
       // The provider accepted the request and began answering; its stream
       // died before completion. That is observed instability, not our choice.
-      return fail(request, started, {
+      return fail(request, started, secrets, {
         terminalReason: 'disconnected',
         httpStatus: responseStatus,
         errorDetail: describeTransportCause(cause),
       });
     }
-    return fail(request, started, {
+    return fail(request, started, secrets, {
       terminalReason: isTimeoutCause(cause) ? 'timeout' : 'cancelled',
       httpStatus: responseStatus,
       errorDetail: describeTransportCause(cause),
@@ -182,11 +194,18 @@ export async function runOpenAiCompatibleExchange(
 function fail(
   request: ExchangeRequest & { profileId?: string },
   started: number,
+  secrets: readonly string[],
   partial: {
     terminalReason: CanonicalObservation['terminalReason'];
     httpStatus: number | null;
     errorDetail?: string | undefined;
   },
 ): ExchangeOutcome {
-  return failedOutcome(request, 'openai-compatible', started, partial);
+  return failedOutcome(request, 'openai-compatible', started, {
+    terminalReason: partial.terminalReason,
+    httpStatus: partial.httpStatus,
+    ...(partial.errorDetail !== undefined
+      ? { errorDetail: redactSecrets(partial.errorDetail, secrets) }
+      : {}),
+  });
 }
