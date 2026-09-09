@@ -13,16 +13,15 @@ resources, or control provider lifecycle.
 
 ## Status
 
-The current PowerShell toolkit is a valuable but provider-coupled predecessor.
-It qualified Gemma 4 12B QAT Q4_0 on the bench-rig RTX 4070 Ti Super through LM
-Studio and established useful measurement patterns: requested/effective config
-verification, cold and reused-prefix TTFT, visible-versus-reasoning output,
-executable coding evaluation, partial-result retention, and VRAM observations.
+The provider-agnostic TypeScript path is the primary product. T0–T6 and T8
+have landed; T7 interoperability remains optional and externally gated.
+The first real-harness adapter (Codex CLI) is complete through M4, including
+disposable config roots and ProcessPort live spawn. Live Codex stays opt-in
+(`TONOS_LIVE_CODEX=1`) and never runs in default CI.
 
-That evidence remains valid only for its recorded machine, model, LM Studio,
-configuration, and task fixtures. The target product direction is documented in
-the [Tonos documentation index](docs/README.md); the existing scripts have not
-yet been refactored to that architecture.
+The archived PowerShell LM Studio toolkit under `legacy/lmstudio/` is
+historical evidence only. Its bench-rig measurements remain valid only for
+their recorded machine, model, LM Studio, configuration, and task fixtures.
 
 ## Specialization
 

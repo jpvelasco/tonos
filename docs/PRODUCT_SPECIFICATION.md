@@ -1,7 +1,8 @@
 # Tonos Product Specification
 
-Status: Accepted target direction; current LM Studio toolkit is a
-provider-coupled predecessor
+Status: Accepted product direction. Primary path is the provider-agnostic
+TypeScript lab; the LM Studio toolkit is a provider-coupled predecessor
+archived under `legacy/lmstudio/`.
 
 Specification date: 2026-08-22
 

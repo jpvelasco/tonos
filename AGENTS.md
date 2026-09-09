@@ -53,8 +53,9 @@ Read these files before changing product behavior:
 4. `docs/INTEROPERABILITY.md` — optional, non-coupling Morpheus relationship;
 5. `legacy/lmstudio/CLAUDE.md` + handoff doc there — historical evidence only.
 
-Caveat: `README.md`'s Status section predates the executed refactor — trust
-`docs/` over it.
+Status text in `README.md`, `docs/IMPLEMENTATION_PLAN.md`,
+`docs/ARCHITECTURE.md`, and `docs/PRODUCT_SPECIFICATION.md` matches the
+executed tip (T0–T6+T8 landed; T7 optional; Codex M1–M4 landed).
 
 ## Product Boundary
 
