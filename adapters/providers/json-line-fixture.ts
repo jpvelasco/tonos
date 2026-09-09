@@ -4,6 +4,7 @@ import {
 } from '../../core/providers/canonical.ts';
 import { failClosedIfUnresolved } from './credentials.ts';
 import {
+  attemptSignal,
   connectWithOneRetry,
   describeTransportCause,
   isTimeoutCause,
@@ -38,12 +39,12 @@ export async function runJsonLineFixtureExchange(
 
   let responseStatus: number | null = null;
   try {
-    const connected = await connectWithOneRetry(`${request.baseUrl}/chat`, {
+    const connected = await connectWithOneRetry(`${request.baseUrl}/chat`, () => ({
       method: 'POST',
-      signal: controller.signal,
+      signal: attemptSignal(controller.signal, request.timeoutMs),
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ model: request.modelAlias, say: request.prompt, cap: request.maxOutputTokens }),
-    });
+    }));
     if (connected.response === undefined) {
       clearTimeout(timer);
       const cause = connected.cause;

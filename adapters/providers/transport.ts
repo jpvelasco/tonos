@@ -11,16 +11,27 @@ export type Connected =
 
 export async function connectWithOneRetry(
   url: string,
-  init: RequestInit,
+  init: RequestInit | (() => RequestInit),
 ): Promise<Connected> {
-  const first = await fetch(url, init).catch((cause: unknown) => cause);
+  const firstInit = typeof init === 'function' ? init() : init;
+  const first = await fetch(url, firstInit).catch((cause: unknown) => cause);
   if (first instanceof Response) return { response: first };
-  // one transparent reconnect for pre-response transport failures
-  const second = await fetch(url, init).catch(() => undefined);
+  // one transparent reconnect for pre-response transport failures;
+  // rebuild init so a deadline abort cannot poison the retry signal
+  const secondInit = typeof init === 'function' ? init() : init;
+  const second = await fetch(url, secondInit).catch(() => undefined);
   if (second instanceof Response) return { response: second };
   return {
     cause: first instanceof Error ? first : new Error('transport failed'),
   };
+}
+
+/** Per-attempt deadline that still honors the exchange-wide controller. */
+export function attemptSignal(
+  exchange: AbortSignal,
+  timeoutMs: number,
+): AbortSignal {
+  return AbortSignal.any([exchange, AbortSignal.timeout(timeoutMs)]);
 }
 
 /** True when a thrown cause represents an aborted/timed-out request. */
