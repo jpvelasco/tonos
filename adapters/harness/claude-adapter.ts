@@ -11,14 +11,13 @@ import type { ConfigurationPort, ProcessPort } from '../../core/ports.ts';
 import { secretEnvName } from '../../core/trial-runner.ts';
 import { readObservedSpawn } from './observed-spawn.ts';
 
-export interface CodexObservedSpawn {
+export interface ClaudeObservedSpawn {
   argv: readonly string[];
   promptTail: string;
   secretKeyCount: number;
 }
 
-export interface CodexAdapterOptions {
-  /** Replay a committed transcript instead of spawning codex (offline tests). */
+export interface ClaudeAdapterOptions {
   replayTranscriptPath?: string | undefined;
   processPort?: ProcessPort | undefined;
   configurationPort?: ConfigurationPort | undefined;
@@ -29,53 +28,41 @@ export interface CodexAdapterOptions {
   workspaceRoot?: string | undefined;
 }
 
-const KNOWN_ITEM_TYPES = new Set([
-  'reasoning',
-  'agent_message',
-  'command_execution',
-  'file_change',
-  'error',
-]);
+const TOOL_MAP: Record<string, string> = {
+  Bash: 'command-execution',
+  Edit: 'file-change',
+  Write: 'file-change',
+  Read: 'read-file',
+};
 
 function bound(value: string, max = 128): string {
   return value.length > max ? value.slice(0, max) : value;
 }
 
-export class CodexAdapter implements HarnessAdapter {
-  readonly kind = 'codex';
+export class ClaudeAdapter implements HarnessAdapter {
+  readonly kind = 'openclaude';
   lastConfigRoot: string | undefined;
-  lastObserved: CodexObservedSpawn | undefined;
+  lastObserved: ClaudeObservedSpawn | undefined;
 
-  constructor(private readonly options: CodexAdapterOptions = {}) {}
+  constructor(private readonly options: ClaudeAdapterOptions = {}) {}
 
   static liveSmokeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-    return env['TONOS_LIVE_CODEX'] === '1';
+    return env['TONOS_LIVE_CLAUDE'] === '1';
   }
 
   preflight(settings: Record<string, unknown>): void {
     if (settings.toolsEnabled === false) {
       throw new Error(
-        'codex qualification requires tools enabled; refusing a tool-less configuration',
+        'claude qualification requires tools enabled; refusing a tool-less configuration',
       );
-    }
-    const effort = settings.reasoningEffort;
-    if (
-      effort !== undefined &&
-      !['auto', 'none', 'low', 'medium', 'high'].includes(String(effort))
-    ) {
-      throw new Error(`unsupported reasoning effort '${String(effort)}'`);
     }
   }
 
   renderConfiguration(settings: Record<string, unknown>): string {
-    const model = String(settings.requestedModelAlias ?? 'luna');
-    const effort = String(settings.reasoningEffort ?? 'medium');
-    return [
-      `model = ${JSON.stringify(model)}`,
-      `model_reasoning_effort = "${effort}"`,
-      'approval_policy = "never"',
-      'sandbox_mode = "workspace-write"',
-    ].join('\n');
+    return JSON.stringify({
+      model: String(settings.requestedModelAlias ?? 'sonnet'),
+      permissionMode: 'bypassPermissions',
+    });
   }
 
   parseLine(rawLine: string): EventLine | null {
@@ -86,54 +73,34 @@ export class CodexAdapter implements HarnessAdapter {
       return null;
     }
     if (typeof event !== 'object' || event === null) return null;
-    const record = event as { type?: unknown; item?: unknown; [k: string]: unknown };
+    const record = event as {
+      type?: unknown;
+      message?: { content?: unknown };
+      subtype?: unknown;
+    };
     if (typeof record.type !== 'string') return null;
-
-    switch (record.type) {
-      case 'item.started':
-      case 'turn.started':
-        return null;
-      case 'item.completed': {
-        const item = record.item as
-          | { type?: unknown; exit_code?: unknown }
-          | undefined;
-        if (
-          typeof item !== 'object' ||
-          item === null ||
-          typeof item.type !== 'string'
-        ) {
-          return { kind: 'unknown_item', fields: { type: String(record.type) } };
-        }
-        if (!KNOWN_ITEM_TYPES.has(item.type)) {
-          return { kind: 'unknown_item', fields: { type: item.type } };
-        }
-        if (item.type === 'command_execution') {
-          return {
-            kind: 'tool',
-            fields: {
-              tool: 'command-execution',
-              ok: (item.exit_code ?? 0) === 0,
-            },
-          };
-        }
-        if (item.type === 'file_change') {
-          return { kind: 'tool', fields: { tool: 'file-change', ok: true } };
-        }
-        return null;
-      }
-      case 'turn.completed':
-        return { kind: 'turn_completed', fields: {} };
-      case 'error':
-      case 'turn.failed': {
-        const message =
-          typeof record.message === 'string'
-            ? record.message
-            : JSON.stringify(record.error ?? '');
-        return { kind: 'harness_error', fields: { message } };
-      }
-      default:
-        return { kind: 'unknown_event', fields: { type: record.type } };
+    if (record.type === 'system') return null;
+    if (record.type === 'result') {
+      return { kind: 'turn_completed', fields: {} };
     }
+    if (record.type === 'assistant') {
+      const content = record.message?.content;
+      if (!Array.isArray(content)) return null;
+      const tool = content.find(
+        (part) =>
+          typeof part === 'object' &&
+          part !== null &&
+          (part as { type?: unknown }).type === 'tool_use',
+      ) as { name?: unknown } | undefined;
+      if (typeof tool?.name !== 'string') return null;
+      const mapped = TOOL_MAP[tool.name];
+      if (mapped === undefined) {
+        return { kind: 'unknown_item', fields: { type: tool.name } };
+      }
+      return { kind: 'tool', fields: { tool: mapped, ok: true } };
+    }
+    if (record.type === 'user') return null;
+    return { kind: 'unknown_event', fields: { type: record.type } };
   }
 
   collectEffectiveBehavior(
@@ -144,14 +111,14 @@ export class CodexAdapter implements HarnessAdapter {
     for (const event of events) {
       if (event.kind === 'unknown_event' || event.kind === 'unknown_item') {
         unknowns.push(
-          bound(`unrecognized codex event type: ${String(event.fields['type'])}`),
+          bound(`unrecognized claude event type: ${String(event.fields['type'])}`),
         );
       }
     }
     if (!events.some((event) => event.kind === 'turn_completed')) {
-      unknowns.push('codex turn completion was not observed');
+      unknowns.push('claude turn completion was not observed');
     }
-    // Codex events do not echo the effective model; absence is recorded.
+    unknowns.push('claude events do not report the effective model');
     return { unknowns };
   }
 
@@ -161,7 +128,7 @@ export class CodexAdapter implements HarnessAdapter {
   ): Promise<CanonicalRun> {
     const captured =
       this.options.replayTranscriptPath !== undefined
-        ? await this.readTranscript(this.options.replayTranscriptPath)
+        ? { stdout: await readFile(this.options.replayTranscriptPath, 'utf8'), exitCode: 0 }
         : await this.spawnAndCollect(declaration);
 
     const events: EventLine[] = [];
@@ -170,7 +137,6 @@ export class CodexAdapter implements HarnessAdapter {
       const parsed = this.parseLine(line);
       if (parsed !== null) events.push(parsed);
     }
-
     const behavior = this.collectEffectiveBehavior({}, events);
     const toolEvents = events
       .filter((event) => event.kind === 'tool')
@@ -205,35 +171,33 @@ export class CodexAdapter implements HarnessAdapter {
     };
   }
 
-  private async readTranscript(path: string): Promise<CapturedRun> {
-    return { stdout: await readFile(path, 'utf8'), exitCode: 0 };
-  }
-
   private async spawnAndCollect(
     declaration: TrialDeclarationPayload,
-  ): Promise<CapturedRun> {
+  ): Promise<{ stdout: string; exitCode: number }> {
     const processPort = this.options.processPort;
     const configurationPort = this.options.configurationPort;
     const promptPath = this.options.promptPath;
     if (processPort === undefined || configurationPort === undefined) {
       throw new Error(
-        'codex live path requires ProcessPort and a disposable configuration root',
+        'claude live path requires ProcessPort and a disposable configuration root',
       );
     }
     if (promptPath === undefined) {
-      throw new Error('codex live path requires the suite task prompt path');
+      throw new Error('claude live path requires the suite task prompt path');
     }
 
     const prompt = (await readFile(promptPath, 'utf8')).trim();
     const rendered = await configurationPort.renderDisposableRoot(
       declaration.harness.harnessId,
-      'codex',
+      'claude',
       declaration.configuration as unknown as Record<string, unknown>,
     );
     this.lastConfigRoot = rendered.configRoot;
     await writeFile(
-      join(rendered.configRoot, 'config.toml'),
-      this.renderConfiguration(declaration.configuration as unknown as Record<string, unknown>),
+      join(rendered.configRoot, 'settings.json'),
+      this.renderConfiguration(
+        declaration.configuration as unknown as Record<string, unknown>,
+      ),
       'utf8',
     );
 
@@ -241,7 +205,7 @@ export class CodexAdapter implements HarnessAdapter {
     const childEnv: Record<string, string> = {
       PATH: process.env['PATH'] ?? '',
       HOME: rendered.configRoot,
-      CODEX_HOME: rendered.configRoot,
+      CLAUDE_CONFIG_DIR: rendered.configRoot,
       TONOS_CONFIG_SOURCE: 'disposable-render',
     };
     for (const ref of declaration.provider.secretRefs) {
@@ -254,21 +218,16 @@ export class CodexAdapter implements HarnessAdapter {
       childEnv[secretEnvName(ref)] = value;
     }
 
-    const command = this.options.command ?? process.env['TONOS_CODEX_COMMAND'] ?? 'codex';
+    const command = this.options.command ?? process.env['TONOS_CLAUDE_COMMAND'] ?? 'claude';
     const extra = this.options.extraArgv ?? [];
-    const codexArgv = [
-      'exec',
-      '--json',
-      '--sandbox',
-      'workspace-write',
-      '--skip-git-repo-check',
-      '-c',
-      `model_reasoning_effort="${String(declaration.configuration.reasoningEffort ?? 'medium')}"`,
-      '-m',
-      declaration.configuration.requestedModelAlias,
+    const claudeArgv = [
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--dangerously-skip-permissions',
       prompt,
     ];
-    const argv = [command, ...extra, ...codexArgv];
+    const argv = [command, ...extra, ...claudeArgv];
 
     try {
       const outcome = await processPort.run(
@@ -283,7 +242,7 @@ export class CodexAdapter implements HarnessAdapter {
         declaration.limits.wallMs,
       );
       this.lastObserved = await readObservedSpawn(rendered.configRoot, {
-        argv: codexArgv,
+        argv: claudeArgv,
         promptTail: prompt,
         secretKeyCount: secrets.length,
       });
@@ -306,9 +265,4 @@ interface CanonicalRun {
   toolEvents: Array<{ tool: string; ok: boolean }>;
   effectiveBehavior: EffectiveBehavior;
   declaredUnknowns: string[];
-}
-
-interface CapturedRun {
-  stdout: string;
-  exitCode: number;
 }
