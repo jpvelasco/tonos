@@ -48,6 +48,32 @@ test('trials are directly comparable only when every identity axis agrees', () =
   assert.match(modelDrift.reason ?? '', /served model/u);
 });
 
+test('matrix rollup sums attributed tokens and cost and declares missing usage honestly', () => {
+  const summary = aggregateTrial('trn_x', [
+    trial({
+      attributedUsage: { promptTokens: 10, completionTokens: 4, reasoningTokens: 1 },
+      costMicros: 20,
+    }),
+    trial({
+      attributedUsage: { promptTokens: 6, completionTokens: 2, reasoningTokens: 0 },
+      costMicros: 10,
+    }),
+    trial({}),
+  ]);
+  assert.deepEqual(summary.tokenTotals, {
+    promptTokens: 16,
+    completionTokens: 6,
+    reasoningTokens: 1,
+    samplesWithUsage: 2,
+    samplesMissingUsage: 1,
+  });
+  assert.deepEqual(summary.costTotals, {
+    amountMicros: 30,
+    samplesWithCost: 2,
+    samplesMissingCost: 1,
+  });
+});
+
 test('repeated trials report sample counts, medians, dispersion, and failure counts', () => {
   const summary = aggregateTrial('trn_x', [
     trial({ totalWallMs: 4_000 }),

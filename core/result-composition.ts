@@ -95,9 +95,22 @@ export function composeTrialResult(input: {
       errorClass: ERROR_CLASS_BY_STATE[output.terminalState],
       message: bounded(message, 256),
     })),
-    missingEvidence: missingEvidence.map((entry) => bounded(entry, 128)).slice(0, 32),
+    missingEvidence: missingEvidence
+      .concat(
+        output.attributedUsage === undefined
+          ? ['token usage was not observed']
+          : [],
+      )
+      .map((entry) => bounded(entry, 128))
+      .slice(0, 32),
     redactionReport: { removedCategories: [] },
     artifactDigests: {},
+    ...(output.attributedUsage !== undefined
+      ? { attributedUsage: output.attributedUsage }
+      : {}),
+    ...(output.costEstimate !== undefined
+      ? { costEstimate: output.costEstimate }
+      : {}),
   };
 }
 
