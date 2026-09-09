@@ -34,6 +34,22 @@ export function attemptSignal(
   return AbortSignal.any([exchange, AbortSignal.timeout(timeoutMs)]);
 }
 
+/** Arm an exchange-wide abort timer; release() is idempotent. */
+export function armExchangeTimeout(
+  abort: () => void,
+  timeoutMs: number,
+  schedule: (fn: () => void, ms: number) => unknown = setTimeout,
+  cancel: (timer: unknown) => void = clearTimeout as (timer: unknown) => void,
+): () => void {
+  const timer = schedule(abort, timeoutMs);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    cancel(timer);
+  };
+}
+
 /** True when a thrown cause represents an aborted/timed-out request. */
 export function isTimeoutCause(cause: unknown): boolean {
   return (
