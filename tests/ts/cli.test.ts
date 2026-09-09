@@ -152,6 +152,22 @@ test('cli rejects invalid matrix documents and unknown adapter kinds with distin
       assert.match(err.stderr, /no executor for adapter kind/u);
     }
     assert.ok(failed, 'unregistered adapter kind must fail cleanly');
+
+    failed = false;
+    try {
+      await run(process.execPath, tsxCli([
+        'matrix', 'run', codexPath,
+        '--artifacts', join(workspace, 'b'),
+        '--workspace-template', workspace,
+        '--harness', 'unknown-kind',
+      ]));
+    } catch (error) {
+      failed = true;
+      const err = error as { code: number; stderr: string };
+      assert.equal(err.code, 1);
+      assert.match(err.stderr, /unknown harness kind/u);
+    }
+    assert.ok(failed, 'unknown --harness kind must fail as usage');
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

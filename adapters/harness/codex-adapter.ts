@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import type {
   EffectiveBehavior,
@@ -7,10 +7,25 @@ import type {
   HarnessAdapter,
 } from '../../core/harness/types.ts';
 import type { TrialDeclarationPayload } from '../../core/records/trial.ts';
+import type { ConfigurationPort, ProcessPort } from '../../core/ports.ts';
+import { secretEnvName } from '../../core/trial-runner.ts';
+
+export interface CodexObservedSpawn {
+  argv: readonly string[];
+  promptTail: string;
+  secretKeyCount: number;
+}
 
 export interface CodexAdapterOptions {
   /** Replay a committed transcript instead of spawning codex (offline tests). */
   replayTranscriptPath?: string | undefined;
+  processPort?: ProcessPort | undefined;
+  configurationPort?: ConfigurationPort | undefined;
+  command?: string | undefined;
+  extraArgv?: readonly string[] | undefined;
+  resolveSecret?: ((reference: string) => string | undefined) | undefined;
+  promptPath?: string | undefined;
+  workspaceRoot?: string | undefined;
 }
 
 const KNOWN_ITEM_TYPES = new Set([
@@ -27,8 +42,14 @@ function bound(value: string, max = 128): string {
 
 export class CodexAdapter implements HarnessAdapter {
   readonly kind = 'codex';
+  lastConfigRoot: string | undefined;
+  lastObserved: CodexObservedSpawn | undefined;
 
   constructor(private readonly options: CodexAdapterOptions = {}) {}
+
+  static liveSmokeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+    return env['TONOS_LIVE_CODEX'] === '1';
+  }
 
   preflight(settings: Record<string, unknown>): void {
     if (settings.toolsEnabled === false) {
@@ -190,9 +211,51 @@ export class CodexAdapter implements HarnessAdapter {
   private async spawnAndCollect(
     declaration: TrialDeclarationPayload,
   ): Promise<CapturedRun> {
-    const prompt =
-      'Working from the repository in the current directory, make progress on the declared task and finish with a summary.';
-    const argv = [
+    const processPort = this.options.processPort;
+    const configurationPort = this.options.configurationPort;
+    const promptPath = this.options.promptPath;
+    if (processPort === undefined || configurationPort === undefined) {
+      throw new Error(
+        'codex live path requires ProcessPort and a disposable configuration root',
+      );
+    }
+    if (promptPath === undefined) {
+      throw new Error('codex live path requires the suite task prompt path');
+    }
+
+    const prompt = (await readFile(promptPath, 'utf8')).trim();
+    const rendered = await configurationPort.renderDisposableRoot(
+      declaration.harness.harnessId,
+      'codex',
+      declaration.configuration as unknown as Record<string, unknown>,
+    );
+    this.lastConfigRoot = rendered.configRoot;
+    await writeFile(
+      join(rendered.configRoot, 'config.toml'),
+      this.renderConfiguration(declaration.configuration as unknown as Record<string, unknown>),
+      'utf8',
+    );
+
+    const secrets: string[] = [];
+    const childEnv: Record<string, string> = {
+      PATH: process.env['PATH'] ?? '',
+      HOME: rendered.configRoot,
+      CODEX_HOME: rendered.configRoot,
+      TONOS_CONFIG_SOURCE: 'disposable-render',
+    };
+    for (const ref of declaration.provider.secretRefs) {
+      const value = this.options.resolveSecret?.(ref);
+      if (value === undefined || value === '') {
+        await configurationPort.removeOwned(rendered.configRoot);
+        throw new Error(`secret reference '${ref}' is unresolved`);
+      }
+      secrets.push(value);
+      childEnv[secretEnvName(ref)] = value;
+    }
+
+    const command = this.options.command ?? process.env['TONOS_CODEX_COMMAND'] ?? 'codex';
+    const extra = this.options.extraArgv ?? [];
+    const codexArgv = [
       'exec',
       '--json',
       '--sandbox',
@@ -204,22 +267,53 @@ export class CodexAdapter implements HarnessAdapter {
       declaration.configuration.requestedModelAlias,
       prompt,
     ];
-    const child = spawn(this.codexCommand(), argv, {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    let stdout = '';
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf8');
-    });
-    const exitCode = await new Promise<number>((resolve) => {
-      child.on('close', (code) => resolve(code ?? -1));
-      child.on('error', () => resolve(-1));
-    });
-    return { stdout, exitCode };
-  }
+    const argv = [command, ...extra, ...codexArgv];
 
-  private codexCommand(): string {
-    return process.env['TONOS_CODEX_COMMAND'] ?? 'codex';
+    try {
+      const outcome = await processPort.run(
+        {
+          argv,
+          cwd: this.options.workspaceRoot ?? rendered.configRoot,
+          envAllowlist: childEnv,
+          stdoutLimitBytes: 1_048_576,
+          stderrLimitBytes: 65_536,
+          cancelGraceMs: declaration.limits.cancelGraceMs,
+        },
+        declaration.limits.wallMs,
+      );
+      this.lastObserved = await readObserved(rendered.configRoot, {
+        argv: codexArgv,
+        promptTail: prompt,
+        secretKeyCount: secrets.length,
+      });
+      return {
+        stdout: outcome.stdout.toString('utf8'),
+        exitCode: outcome.exitCode ?? -1,
+      };
+    } finally {
+      await configurationPort.removeOwned(rendered.configRoot);
+    }
+  }
+}
+
+async function readObserved(
+  configRoot: string,
+  fallback: CodexObservedSpawn,
+): Promise<CodexObservedSpawn> {
+  try {
+    const raw = JSON.parse(await readFile(join(configRoot, 'observed.json'), 'utf8')) as {
+      argv?: unknown;
+      promptTail?: unknown;
+      secretKeyCount?: unknown;
+    };
+    return {
+      argv: Array.isArray(raw.argv) ? raw.argv.map(String) : fallback.argv,
+      promptTail: typeof raw.promptTail === 'string' ? raw.promptTail : fallback.promptTail,
+      secretKeyCount:
+        typeof raw.secretKeyCount === 'number' ? raw.secretKeyCount : fallback.secretKeyCount,
+    };
+  } catch {
+    return fallback;
   }
 }
 

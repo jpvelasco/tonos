@@ -1,7 +1,3 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { createProcessPort } from '../process/process-port.ts';
 import { FileSystemWorkspacePort } from '../workspace/fs-workspace-port.ts';
 import { createT5Evaluation } from '../evaluators/t5-evaluation.ts';
@@ -13,12 +9,11 @@ import type {
   UnitOutcome,
 } from '../../core/matrix/runner.ts';
 import type {
-  ConfigurationPort,
   EvidenceSink,
-  RenderedConfiguration,
   SecretProvider,
 } from '../../core/ports.ts';
 import type { TrialDeclarationPayload, TrialResult } from '../../core/records/trial.ts';
+import { DisposableFileConfigurationPort } from './disposable-config.ts';
 
 export interface FixtureExecutorOptions {
   workspaceTemplateDir: string;
@@ -35,26 +30,6 @@ export class EnvSecretProvider implements SecretProvider {
       );
     }
     return fromEnvironment;
-  }
-}
-
-class DisposableFileConfigurationPort implements ConfigurationPort {
-  async renderDisposableRoot(
-    harnessId: string,
-    trialToken: string,
-    settings: Readonly<Record<string, unknown>>,
-  ): Promise<RenderedConfiguration> {
-    const root = await mkdtemp(join(tmpdir(), 'tonos-config-'));
-    await writeFile(
-      join(root, `${harnessId}.${trialToken}.json`),
-      JSON.stringify(settings, null, 2),
-      'utf8',
-    );
-    return { configRoot: root, effectiveNotes: [`rendered-for-${harnessId}`] };
-  }
-
-  async removeOwned(configRoot: string): Promise<void> {
-    await rm(configRoot, { recursive: true, force: true });
   }
 }
 
