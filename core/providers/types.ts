@@ -34,6 +34,13 @@ export interface ExchangeRequest {
   prompt: string;
   maxOutputTokens: number;
   timeoutMs: number;
+  /** Declared store addresses only. Values stay process-local. */
+  secretRefs?: readonly string[];
+  /**
+   * Resolves a declared reference at the last responsible moment.
+   * Missing or empty results fail closed before any outbound request.
+   */
+  resolveSecret?: ((reference: string) => string | undefined) | undefined;
 }
 
 export interface ExchangeOutcome {
