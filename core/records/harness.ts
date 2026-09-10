@@ -6,6 +6,8 @@ export const AdapterKind = z.enum([
   'grok-cli',
   'zero',
   'openclaude',
+  'aider',
+  'cline',
   'fixture',
 ]);
 export type AdapterKind = z.output<typeof AdapterKind>;
