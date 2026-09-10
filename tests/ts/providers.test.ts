@@ -5,6 +5,7 @@ import { once } from 'node:events';
 
 import { encode, decode, type RecordKind } from '../../core/codec.ts';
 import { runOpenAiCompatibleExchange } from '../../adapters/providers/openai-compatible.ts';
+import { runAnthropicCompatibleExchange } from '../../adapters/providers/anthropic-compatible.ts';
 import { runJsonLineFixtureExchange } from '../../adapters/providers/json-line-fixture.ts';
 import { armExchangeTimeout, connectWithOneRetry } from '../../adapters/providers/transport.ts';
 import type { ExchangeOutcome } from '../../core/providers/types.ts';
@@ -83,6 +84,37 @@ function sseServer(): FixtureServer {
   return { server, hits, armReset: () => { resetArmed = true; } };
 }
 
+function anthropicServer(): FixtureServer {
+  const hits: string[] = [];
+  let resetArmed = false;
+  const server = createServer((req, res) => {
+    hits.push(`${req.method} ${req.url}`);
+    if (resetArmed) {
+      resetArmed = false;
+      res.socket?.destroy();
+      return;
+    }
+    if (req.url === '/v1/messages') {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hel' } })}\n\n`,
+      );
+      res.write(
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'lo' } })}\n\n`,
+      );
+      res.write(
+        `event: message_delta\ndata: ${JSON.stringify({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { input_tokens: 12, output_tokens: 5 } })}\n\n`,
+      );
+      res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+      res.end();
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  return { server, hits, armReset: () => { resetArmed = true; } };
+}
+
 function jsonLineServer(): FixtureServer {
   const hits: string[] = [];
   let resetArmed = false;
@@ -113,6 +145,40 @@ function jsonLineServer(): FixtureServer {
     });
   return { server, hits, armReset: () => { resetArmed = true; } };
 }
+
+test('openai-compatible and anthropic-compatible fixtures map the same logical exchange to equivalent canonical observations', async () => {
+  const sse = sseServer();
+  const anthropic = anthropicServer();
+  const sseUrl = await listen(sse.server);
+  const anthropicUrl = await listen(anthropic.server);
+  const [viaSse, viaAnthropic] = await Promise.all([
+    runOpenAiCompatibleExchange({
+      baseUrl: `${sseUrl}/v1`,
+      modelAlias: 'test-model',
+      prompt: `say hi ${CANARY}`,
+      maxOutputTokens: 32,
+      timeoutMs: 5_000,
+    }),
+    runAnthropicCompatibleExchange({
+      baseUrl: `${anthropicUrl}/v1`,
+      modelAlias: 'test-model',
+      prompt: `say hi ${CANARY}`,
+      maxOutputTokens: 32,
+      timeoutMs: 5_000,
+    }),
+  ]);
+  for (const server of [sse.server, anthropic.server]) server.close();
+  assert.equal(viaSse.text, 'Hello');
+  assert.equal(viaAnthropic.text, 'Hello');
+  assert.equal(viaAnthropic.finishReason, 'end_turn');
+  assert.equal(viaSse.observation.usage.promptTokens, viaAnthropic.observation.usage.promptTokens);
+  assert.equal(
+    viaSse.observation.usage.completionTokens,
+    viaAnthropic.observation.usage.completionTokens,
+  );
+  assert.equal(viaAnthropic.observation.protocolAdapterKind, 'anthropic-compatible');
+  assert.ok(!('ttftSeconds' in viaAnthropic.observation.clientTiming));
+});
 
 test('openai-compatible and json-line fixtures map the same logical exchange to equivalent canonical observations', async () => {
   const sse = sseServer();

@@ -46,6 +46,13 @@ test('trials are directly comparable only when every identity axis agrees', () =
   const modelDrift = comparabilityOf(base, trial({ servedModelId: 'other@x' }));
   assert.equal(modelDrift.comparable, false);
   assert.match(modelDrift.reason ?? '', /served model/u);
+
+  const protocolDrift = comparabilityOf(
+    base,
+    trial({ providerProtocol: 'anthropic-compatible' }),
+  );
+  assert.equal(protocolDrift.comparable, false);
+  assert.match(protocolDrift.reason ?? '', /provider protocol/u);
 });
 
 test('matrix rollup sums attributed tokens and cost and declares missing usage honestly', () => {
