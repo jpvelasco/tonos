@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## Where We Left Off (2026-08-24)
+## Where We Left Off (2026-09-09)
 
 Tonos is a **provider-agnostic AI harness qualification lab**. It compares
 developer harnesses such as Codex, Grok CLI, Zero, OpenClaude, and future
@@ -20,7 +20,7 @@ design: it is blocked on external work in the Morpheus repository (rectification
 R1 and R2) plus cross-repo agreement on static golden exchange fixtures. Do not
 implement it before those land; it must never block Tonos qualification.
 
-### Current work: Codex adapter in progress (issue #40, M1 landed via #41)
+### Current work: multi-harness qualification lanes landed
 
 Done and stable: hardening pass (#23), matrix execution loop with CLI
 (#33–#36), operator-driven retention via `matrix prune` (#38), and
@@ -31,19 +31,34 @@ Prune old result directories with
 `npm run cli -- matrix prune --artifacts <dir> [--keep-last N]
 [--older-than-days D] [--apply]` (dry-run by default).
 
-In flight — **first real-harness adapter (Codex CLI)**, scoped plan in
-issue #40:
+The first real-harness adapter, Codex CLI, is complete through M4 (issue #40;
+PRs #41, #45, and #59): sanitized JSONL replay fixtures, a disposable
+`CODEX_HOME`, process-local `TONOS_SECRET_*` injection, live `ProcessPort`
+spawn with suite prompt content, and opt-in smoke execution via
+`TONOS_LIVE_CODEX=1`. No network or auth is needed for its contract tests.
 
-- M1 landed (#41): real JSONL transcripts captured from codex 0.149.0,
-  sanitized to `tests/fixtures/transcripts/codex/`, replay-based parser +
-  offline shared-contract green. No network or auth in tests.
-- M2–M4 landed: disposable `CODEX_HOME` via `ConfigurationPort`, secret
-  injection through `TONOS_SECRET_*`, live spawn through `ProcessPort`
-  with suite task prompt content (#45), opt-in live smoke gated on
-  `TONOS_LIVE_CODEX=1` (never default CI), and an executor registry
-  keyed by `declaration.harness.adapterKind` with `--harness fixture|codex`.
-- One named-harness adapter at a time; the fixture contract
-  (`core/harness/contract.ts`) is the gate every real adapter passes first.
+Claude Code (`openclaude`, #62), Aider, and Cline (#65) now pass the same
+shared adapter contract. They use replay fixtures, isolated configuration
+roots, `ProcessPort` live execution, and suite task prompts; their live lanes
+are separately gated by `TONOS_LIVE_CLAUDE=1`, `TONOS_LIVE_AIDER=1`, and
+`TONOS_LIVE_CLINE=1`. The matrix executor registry is keyed by
+`declaration.harness.adapterKind`; register the required kinds explicitly with
+`--harness fixture|codex|openclaude|aider|cline`.
+
+Provider and qualification evidence also expanded:
+
+- `anthropic-compatible` maps Anthropic Messages exchanges to the canonical
+  observation shape (#66). Provider protocol is a comparability axis, so
+  mixed-protocol cells are never silently compared.
+- Trial results retain optional provider-reported token usage and
+  operator-rate-table cost estimates (#61). Missing observations remain
+  explicitly missing evidence; no usage or cost is invented.
+- `matrix qualify --report markdown|html` emits sanitized derived reports
+  with gates, exclusions, limitations, and explicit no-winner outcomes (#63).
+  The encoded qualification decision remains the source of truth.
+- The `tonos-matrix` workflow runs the committed fixture matrix on pull
+  requests and uploads sanitized artifacts (#64). Live execution is
+  `workflow_dispatch` only and requires an explicit repository secret.
 
 Read these files before changing product behavior:
 
@@ -54,8 +69,10 @@ Read these files before changing product behavior:
 5. `legacy/lmstudio/CLAUDE.md` + handoff doc there — historical evidence only.
 
 Status text in `README.md`, `docs/IMPLEMENTATION_PLAN.md`,
-`docs/ARCHITECTURE.md`, and `docs/PRODUCT_SPECIFICATION.md` matches the
-executed tip (T0–T6+T8 landed; T7 optional; Codex M1–M4 landed).
+`docs/ARCHITECTURE.md`, and `docs/PRODUCT_SPECIFICATION.md` establishes the
+product and milestone baseline (T0–T6+T8 landed; T7 optional). This handoff
+also records the post-plan multi-harness, reporting, cost-evidence, and
+dual-protocol work through PR #66.
 
 ## Product Boundary
 
@@ -153,12 +170,14 @@ Testing gotchas:
   bare `listen(0)` there produces retry-immune flakes.
 - Process-tree assertions filter by a per-run `--marker=` argument; do not
   scan all system processes (parallel test files run their own fixtures).
-- Live lanes are opt-in env-gated (`TONOS_LIVE_CODEX=1` once #40 M3 lands)
-  and never run in default CI.
+- Live adapter lanes are opt-in env-gated (`TONOS_LIVE_CODEX=1`,
+  `TONOS_LIVE_CLAUDE=1`, `TONOS_LIVE_AIDER=1`, or `TONOS_LIVE_CLINE=1`) and
+  never run in default CI.
 
-CI runs three jobs on every PR: `gates` (windows pwsh: legacy syntax checks
-and legacy unit tests — always, not only when legacy files change) and
-`node-gates` on ubuntu + windows (`npm ci` → typecheck → test →
-verify-generated). Generated artifacts are LF-pinned via `.gitattributes` —
+On every PR, `ci` runs `gates` (Windows pwsh: legacy syntax checks and legacy
+unit tests — always, not only when legacy files change) plus `node-gates` on
+Ubuntu and Windows (`npm ci` → typecheck → test → `verify-generated`). The
+separate `tonos-matrix` workflow runs the fixture-only matrix and uploads
+sanitized artifacts. Generated artifacts are LF-pinned via `.gitattributes` —
 never hand-edit `schemas/*.json` or `tests/fixtures/goldens/*.json`; rerun
 the emitters and commit the output.
